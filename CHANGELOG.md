@@ -9,6 +9,9 @@
 - `src/protocol/commands.rs` — `CMD_GET_LOG_HEADER_COUNT`, `LOG_HEADER_END`, `build_flash_read_cmd`
 - `src/protocol/mod.rs` — `get_log_header_count`, `get_log_headers`, `get_log_data`
 
+### Fixed
+- `show-unit-info` serial number and firmware version displayed garbled bytes — corrected decoding to match `Gps10Decoder.decodeInitialInformation`: serial is a 6-byte little-endian integer; firmware byte is formatted as hex then parsed as decimal (e.g. `0x42` → `"42"` → `4.2`)
+
 ### Changed
 - `src/protocol/` is now a module directory (`mod.rs` + `commands.rs`) instead of a single `protocol.rs`
 - No default subcommand — a subcommand is now required (previously `update` ran by default)

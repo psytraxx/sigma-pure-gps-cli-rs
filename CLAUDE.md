@@ -49,9 +49,12 @@ Key files:
 
 ## After every code change
 
+**Required — do not skip any of these:**
+
 ```bash
 cargo clippy
 cargo fmt
 ```
 
-Then update [`docs/protocol.md`](docs/protocol.md) if any protocol details changed, and add an entry to [`CHANGELOG.md`](CHANGELOG.md).
+- Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` — always, for every change
+- Update [`docs/protocol.md`](docs/protocol.md) if any protocol details changed
