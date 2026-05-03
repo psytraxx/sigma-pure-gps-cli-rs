@@ -1,6 +1,19 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 
+/// Decodes the AGPS sync date from 13 bytes read at flash offset 0x1000.
+/// Bytes [10]=year-2000, [11]=month (1-based), [12]=day (ported from AgpsLoader.decodeAgpsOfflineDataUploadDate).
+pub fn decode_agps_date(data: &[u8]) -> Result<NaiveDate> {
+    if data.len() < 13 {
+        bail!("AGPS header too short: {} bytes", data.len());
+    }
+    let year = data[10] as i32 + 2000;
+    let month = data[11] as u32;
+    let day = data[12] as u32;
+    NaiveDate::from_ymd_opt(year, month, day)
+        .ok_or_else(|| anyhow::anyhow!("Invalid AGPS date: {year}-{month:02}-{day:02}"))
+}
+
 pub struct Settings {
     pub time_zone: &'static str,
     pub summer_time: bool,

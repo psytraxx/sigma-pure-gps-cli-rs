@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `agps-date` subcommand — reads the date of AGPS data stored on the device from flash address 0x1000; command sends `len-1=14`, response is 21 bytes; date decoded from payload bytes 10–12 (year+2000, month, day; ported from `AgpsLoader.decodeAgpsOfflineDataUploadDate`)
 - `get-totals` subcommand — reads cumulative totals from EEPROM offset 304 (total distance, training time, calories, climb, reset date); distance raw = mm → /1e6 = km; climb raw = mm/100 → /10000 = m; time raw × 1000 = ms
 - `get-settings` subcommand — reads device settings from EEPROM offset 272 and prints all fields (timezone, language, units, contrast, NFC, auto-pause, auto-lap distance, name, altitude/sea-level references); timezone displayed as named GMT offset using the GPS10 lookup table from `CommonTimeZoneDataProvider.as`
 - `download-tracks` subcommand — reads all recorded tracks from device flash and saves them as GPX 1.1 files (one per track)

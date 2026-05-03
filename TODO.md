@@ -10,7 +10,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 | 4 | Download activity log headers | ✅ | ✅ `download-tracks` |
 | 5 | Download activity log data (GPS points) | ✅ | ✅ `download-tracks` |
 | 6 | Save tracks as GPX files | ✅ | ✅ `download-tracks` |
-| 7 | Check AGPS data sync date on device | ✅ | ❌ |
+| 7 | Check AGPS data sync date on device | ✅ | ✅ `agps-date` |
 | 8 | Read device settings (timezone, language, units, contrast, …) | ✅ | ✅ `get-settings` |
 | 9 | Write device settings (timezone, language, speed/temp/altitude units, date format, contrast, system tone, NFC, auto-pause, auto-lap distance, user name) | ✅ | ❌ |
 | 10 | Set altitude reference (actual altitude / sea level pressure) | ✅ | ❌ |
@@ -29,7 +29,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 - [x] **`get-totals`** — read cumulative totals from EEPROM offset 304 (20 bytes)
 - [ ] **`set-totals`** — write cumulative totals back to device
 - [ ] **`delete-tracks`** — erase all activity log data from device flash (UPDATE_FLAG_TRIP_DATA_RESET = 4)
-- [ ] **`agps-date`** — read AGPS last-sync date from device; see `AgpsLoader.as` `decodeAgpsOfflineDataUploadDate`
+- [x] **`agps-date`** — read AGPS last-sync date from device; see `AgpsLoader.as` `decodeAgpsOfflineDataUploadDate`
 - [ ] **`set-waypoints`** — upload up to N named waypoints (EEPROM offset 336, 27 bytes each); see `Gps10Decoder.as` `encodePointNavigation`
 - [ ] **`set-sleep-screen`** — upload custom watch face bitmap (EEPROM offset 96, 172 bytes); see `Gps10Decoder.as` `encodeSleepScreen`
 - [ ] **`set-altitude`** — set actual altitude or sea level pressure reference on device

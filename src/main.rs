@@ -43,6 +43,8 @@ enum Command {
     GetSettings,
     /// Read cumulative totals (distance, time, calories, climb)
     GetTotals,
+    /// Show the date of the AGPS data currently on the device
+    AgpsDate,
     /// Download recorded tracks from the device and save as GPX files
     DownloadTracks {
         /// Directory to write GPX files into
@@ -71,6 +73,7 @@ async fn main() -> Result<()> {
         Command::Info => commands::info::run(cli.port).await,
         Command::GetSettings => commands::get_settings::run(cli.port).await,
         Command::GetTotals => commands::get_totals::run(cli.port).await,
+        Command::AgpsDate => commands::agps_date::run(cli.port).await,
         Command::DownloadTracks { output_dir } => {
             commands::download_tracks::run(cli.port, &output_dir).await
         }

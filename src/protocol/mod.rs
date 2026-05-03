@@ -68,6 +68,16 @@ pub fn get_totals(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
     Ok(eeprom[304..304 + 20].to_vec())
 }
 
+/// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).
+/// Command sends len-1=14; response is 15+6 bytes. Date is at payload offsets [10..12].
+pub fn get_agps_flash_header(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    let cmd = commands::build_flash_read_cmd(0x1000, 14);
+    send(port, &cmd)?;
+    let raw = recv(port, 5 + 15 + 1)?;
+    verify_checksum_seed0(&raw)?;
+    Ok(raw[5..5 + 15].to_vec())
+}
+
 pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     // Step 1: notify start (fire-and-forget) + CMD_SEND_AGPS
     send(port, commands::CMD_TRANSFER_STARTED)?;
