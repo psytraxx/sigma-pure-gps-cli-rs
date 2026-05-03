@@ -31,14 +31,14 @@ enum Command {
     /// Download AGPS data and upload it to the connected device
     Update,
     /// Download AGPS data and save it to a file (no device needed)
-    Download {
+    DownloadAgps {
         #[arg(default_value = "agps.bin")]
         output: String,
     },
     /// List detected serial ports
     ListPorts,
     /// Show unit information from the connected device
-    ShowUnitInfo,
+    Info,
     /// Download recorded tracks from the device and save as GPX files
     DownloadTracks {
         /// Directory to write GPX files into
@@ -62,9 +62,9 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Command::ListPorts => commands::list_ports::run(),
-        Command::Download { output } => commands::download::run(&output).await,
+        Command::DownloadAgps { output } => commands::download_agps::run(&output).await,
         Command::Update => commands::update::run(cli.port).await,
-        Command::ShowUnitInfo => commands::show_unit_info::run(cli.port).await,
+        Command::Info => commands::info::run(cli.port).await,
         Command::DownloadTracks { output_dir } => {
             commands::download_tracks::run(cli.port, &output_dir).await
         }

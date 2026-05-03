@@ -38,9 +38,9 @@ Options:
 
 Commands:
   update              Download AGPS data and upload to device
-  download            Download AGPS data to a local file
+  download-agps       Download AGPS data to a local file (no device needed)
   download-tracks     Download recorded tracks from device as GPX files
-  show-unit-info      Query device serial number and firmware version
+  info                Query device serial number and firmware version
   list-ports          List available serial ports with USB VID/PID info
 ```
 
@@ -65,13 +65,13 @@ Each track is saved as `track_NNN.gpx` with elevation, speed, and temperature ex
 ### Download AGPS data to file
 
 ```bash
-sigma-pure-gps-cli download agps.bin
+sigma-pure-gps-cli download-agps agps.bin
 ```
 
 ### Query device info
 
 ```bash
-sigma-pure-gps-cli show-unit-info
+sigma-pure-gps-cli info
 ```
 
 ### List serial ports

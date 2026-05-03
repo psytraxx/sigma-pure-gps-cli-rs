@@ -9,9 +9,9 @@ cargo build                          # debug build
 cargo build --release                # release build
 cargo run -- --help                  # show CLI help
 cargo run -- list-ports              # list serial ports
-cargo run -- show-unit-info          # query connected device
+cargo run -- info                     # query connected device
 cargo run -- update                  # download AGPS + upload
-cargo run -- download agps.bin       # download AGPS only, save to file
+cargo run -- download-agps agps.bin  # download AGPS only, save to file
 cargo run -- download-tracks ./out   # download recorded tracks as GPX
 cargo run -- -v update               # verbose (debug logging)
 cargo clippy                         # lint
@@ -22,7 +22,7 @@ cargo test                           # run tests
 
 Single-binary CLI tool. `main.rs` contains only arg parsing and dispatch. Each subcommand is a module under `src/commands/`. To add a new subcommand: create `src/commands/my_cmd.rs` with a `pub async fn run(...)`, register it in `src/commands/mod.rs`, add the variant to `Command` in `main.rs`, and wire it in `match cli.command`.
 
-**`src/commands/`** — One file per subcommand: `update`, `download`, `download_tracks`, `show_unit_info`, `list_ports`.
+**`src/commands/`** — One file per subcommand: `update`, `download_agps`, `download_tracks`, `info`, `list_ports`.
 
 **`src/util.rs`** — Shared helpers: `resolve_port` (auto-detect or use CLI arg) and `build_http_client`.
 

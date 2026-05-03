@@ -9,6 +9,10 @@
 - `src/protocol/commands.rs` — `CMD_GET_LOG_HEADER_COUNT`, `LOG_HEADER_END`, `build_flash_read_cmd`
 - `src/protocol/mod.rs` — `get_log_header_count`, `get_log_headers`, `get_log_data`
 
+### Changed
+- Renamed `show-unit-info` subcommand to `info`
+- Renamed `download` subcommand to `download-agps`
+
 ### Fixed
 - `update` and `show-unit-info` commands hung/timed out requiring USB reconnect — root cause was `CMD_CHECK_CONNECTED` (`0xF4`) being sent manually; in the original Flash app this command is handled asynchronously by the USB driver layer and must not be sent as part of a command sequence; removed `check_device_connected` entirely
 - `update` command timed out on AGPS upload — device requires `CMD_LOAD_UNIT_INFO` → `CMD_GET_COMPLETE_EEPROM` before accepting `CMD_SEND_AGPS`, matching the original app's handshake; added both steps to the upload flow
