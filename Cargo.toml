@@ -19,3 +19,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 indicatif = "0.18.4"
 chrono = "0.4"
+quick-xml = { version = "0.39.2", features = ["serialize"] }

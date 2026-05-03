@@ -1,5 +1,7 @@
+mod decoder;
 mod device;
 mod downloader;
+mod gpx;
 mod protocol;
 
 use anyhow::{Context, Result};
@@ -8,10 +10,10 @@ use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "sigma-pure-gps-updater")]
-#[command(about = "Update AGPS satellite prediction data on the Sigma Pure GPS (Gps10)")]
+#[command(about = "Manage the Sigma Pure GPS (Gps10) — update AGPS data and download tracks")]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 
     /// Serial port to use (e.g. COM3 on Windows, /dev/ttyACM0 on Linux).
     /// Auto-detected by USB VID 0x1D9D if omitted.
@@ -25,7 +27,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Download AGPS data and upload it to the connected device (default)
+    /// Download AGPS data and upload it to the connected device
     Update,
     /// Only download AGPS data and save it to a file
     Download {
@@ -36,6 +38,12 @@ enum Command {
     ListPorts,
     /// Show unit information from the connected device
     ShowUnitInfo,
+    /// Download recorded tracks from the device and save as GPX files
+    DownloadTracks {
+        /// Directory to write GPX files into
+        #[arg(default_value = ".")]
+        output_dir: String,
+    },
 }
 
 #[tokio::main]
@@ -51,13 +59,12 @@ async fn main() -> Result<()> {
         .without_time()
         .init();
 
-    let command = cli.command.unwrap_or(Command::Update);
-
-    match command {
+    match cli.command {
         Command::ListPorts => list_ports(),
         Command::Download { output } => cmd_download(&output).await,
         Command::Update => cmd_update(cli.port).await,
         Command::ShowUnitInfo => cmd_show_unit_info(cli.port).await,
+        Command::DownloadTracks { output_dir } => cmd_download_tracks(cli.port, &output_dir).await,
     }
 }
 
@@ -162,6 +169,74 @@ async fn cmd_show_unit_info(port_arg: Option<String>) -> Result<()> {
     })
     .await
     .context("Unit info task panicked")??;
+
+    Ok(())
+}
+
+async fn cmd_download_tracks(port_arg: Option<String>, output_dir: &str) -> Result<()> {
+    let port_name = match port_arg {
+        Some(p) => p,
+        None => {
+            info!("Auto-detecting SIGMA device...");
+            device::find_sigma_port()?
+        }
+    };
+    info!("Using port: {port_name}");
+
+    let output_dir = output_dir.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let mut port = protocol::open_port(&port_name)?;
+
+        let count = protocol::get_log_header_count(&mut port)?;
+        info!("Found {count} track(s) on device");
+        if count == 0 {
+            return Ok(());
+        }
+
+        let header_bytes = protocol::get_log_headers(&mut port, count)?;
+
+        std::fs::create_dir_all(&output_dir)?;
+
+        for i in 0..count as usize {
+            let h_slice = &header_bytes[i * 65..(i + 1) * 65];
+            let header = match decoder::decode_log_header(h_slice) {
+                Ok(h) => h,
+                Err(e) => {
+                    error!("Track {}: failed to decode header: {e:#}", i + 1);
+                    continue;
+                }
+            };
+
+            info!(
+                "Track {}/{}: {} — {:.1} km",
+                i + 1,
+                count,
+                header.start_date.format("%Y-%m-%d %H:%M"),
+                header.distance_m as f64 / 1000.0
+            );
+
+            let data = match protocol::get_log_data(&mut port, header.start_addr, header.stop_addr)
+            {
+                Ok(d) => d,
+                Err(e) => {
+                    error!("Track {}: failed to read log data: {e:#}", i + 1);
+                    continue;
+                }
+            };
+
+            let points = decoder::decode_log_data(&data);
+            info!("  {} track points decoded", points.len());
+
+            let filename = gpx::track_filename(&header, i);
+            let path = std::path::Path::new(&output_dir).join(&filename);
+            gpx::write_gpx(&path, &header, &points)?;
+            info!("  Saved to {}", path.display());
+        }
+
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .context("Download tracks task panicked")??;
 
     Ok(())
 }

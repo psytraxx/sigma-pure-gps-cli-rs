@@ -24,3 +24,31 @@ pub const CMD_CHECK_CONNECTED: &[u8] = &[0xF4];
 pub const CMD_LOAD_UNIT_INFO: &[u8] = &[
     0x56, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x00, 0x00, 0xA7,
 ];
+
+/// Requests the number of stored log headers; device replies with 8 bytes (`reply[5]` = count).
+pub const CMD_GET_LOG_HEADER_COUNT: &[u8] = &[
+    0x54, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60,
+];
+
+/// Flash address where log headers end (top of log flash space).
+pub const LOG_HEADER_END: u32 = 0x1F_FFFF;
+
+/// Builds a `86 12 00 00 00 <start 24-bit LE> <len 24-bit LE> <checksum>` flash-read command.
+pub fn build_flash_read_cmd(start: u32, len: u32) -> Vec<u8> {
+    let mut cmd = vec![
+        0x56,
+        0x0C,
+        0x00,
+        0x00,
+        0x00,
+        (start & 0xFF) as u8,
+        (start >> 8 & 0xFF) as u8,
+        (start >> 16 & 0xFF) as u8,
+        (len & 0xFF) as u8,
+        (len >> 8 & 0xFF) as u8,
+        (len >> 16 & 0xFF) as u8,
+    ];
+    let checksum: u8 = cmd.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+    cmd.push(checksum);
+    cmd
+}

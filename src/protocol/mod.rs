@@ -76,6 +76,42 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Returns the number of log headers stored on the device.
+pub fn get_log_header_count(port: &mut Box<dyn SerialPort>) -> Result<u8> {
+    send(port, commands::CMD_GET_LOG_HEADER_COUNT)?;
+    let reply = recv(port, 8)?;
+    Ok(reply[5])
+}
+
+/// Returns the raw bytes for all log headers (n × 65 bytes, stripped of the 5-byte response
+/// header and trailing checksum byte).
+pub fn get_log_headers(port: &mut Box<dyn SerialPort>, count: u8) -> Result<Vec<u8>> {
+    let n = count as u32;
+    let len = n * 65;
+    let start = commands::LOG_HEADER_END - len + 1;
+    let cmd = commands::build_flash_read_cmd(start, len);
+    send(port, &cmd)?;
+    // Response: 5-byte header + len bytes + 1 checksum
+    let total = (len + 6) as usize;
+    let raw = recv(port, total)?;
+    Ok(raw[5..5 + len as usize].to_vec())
+}
+
+/// Returns raw log data bytes for a single track (stripped of 5-byte header + 2 trailing bytes).
+pub fn get_log_data(
+    port: &mut Box<dyn SerialPort>,
+    start_addr: u32,
+    stop_addr: u32,
+) -> Result<Vec<u8>> {
+    let len = stop_addr - start_addr + 1;
+    let cmd = commands::build_flash_read_cmd(start_addr, len);
+    send(port, &cmd)?;
+    // Response: 5-byte header + len bytes + checksum + extra byte
+    let total = (len + 7) as usize;
+    let raw = recv(port, total)?;
+    Ok(raw[5..5 + len as usize].to_vec())
+}
+
 fn send(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     port.write_all(data).context("Serial write failed")
 }
