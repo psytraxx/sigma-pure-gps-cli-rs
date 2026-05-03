@@ -15,7 +15,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 | 9 | Write device settings (timezone, language, speed/temp/altitude units, date format, contrast, system tone, NFC, auto-pause, auto-lap distance, user name) | ✅ | ❌ |
 | 10 | Set altitude reference (actual altitude / sea level pressure) | ✅ | ❌ |
 | 11 | Set home altitude 1 & 2 | ✅ | ❌ |
-| 12 | Read cumulative totals (total distance, training time, calories, climb) | ✅ | ❌ |
+| 12 | Read cumulative totals (total distance, training time, calories, climb) | ✅ | ✅ `get-totals` |
 | 13 | Write cumulative totals back to device | ✅ | ❌ |
 | 14 | Configure sleep screen / watch face (16×59 px bitmap, clock & name position) | ✅ | ❌ |
 | 15 | Write point navigation / waypoints (named GPS waypoints) | ✅ | ❌ |
@@ -26,7 +26,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 
 - [x] **`get-settings`** — read EEPROM offset 272 (32 bytes) and print all device settings
 - [ ] **`set-settings`** — write settings back (timezone, language, units, contrast, auto-pause, auto-lap, user name, …); see `Gps10Decoder.as` `decodeSettings` / `encodeSettings`
-- [ ] **`get-totals`** — read cumulative totals from EEPROM offset 304 (20 bytes)
+- [x] **`get-totals`** — read cumulative totals from EEPROM offset 304 (20 bytes)
 - [ ] **`set-totals`** — write cumulative totals back to device
 - [ ] **`delete-tracks`** — erase all activity log data from device flash (UPDATE_FLAG_TRIP_DATA_RESET = 4)
 - [ ] **`agps-date`** — read AGPS last-sync date from device; see `AgpsLoader.as` `decodeAgpsOfflineDataUploadDate`

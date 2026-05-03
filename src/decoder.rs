@@ -23,6 +23,57 @@ pub struct Settings {
     pub auto_lap_distance_m: u16,
 }
 
+pub struct Totals {
+    pub total_distance_km: f64,
+    pub total_training_time_ms: u64,
+    pub total_calories_kcal: u32,
+    pub total_climb_m: f64,
+    pub reset_date: Option<chrono::NaiveDate>,
+}
+
+/// Decodes a 20-byte totals slice from EEPROM offset 304 (ported from `Gps10Decoder.decodeTotals`).
+pub fn decode_totals(data: &[u8]) -> Result<Totals> {
+    if data.len() < 20 {
+        bail!("Totals data too short: {} bytes", data.len());
+    }
+    verify_checksum(data, 1)?;
+
+    // Raw integer = metres; frac bytes = sub-km metres (0–999); convert to km
+    let dist_m = ((data[3] & 0x0F) as u64) << 24
+        | (data[2] as u64) << 16
+        | (data[1] as u64) << 8
+        | data[0] as u64;
+    let dist_frac_m = ((data[5] & 0x03) as u32) << 8 | data[4] as u32;
+    let total_distance_km = dist_m as f64 / 1000.0 + dist_frac_m as f64 / 1000.0 / 1000.0;
+
+    // encodeTotals stores trainingTime_ms/100 but display unit is deciseconds → *1000
+    let total_training_time_ms = (((data[9] & 0x03) as u64) << 24
+        | (data[8] as u64) << 16
+        | (data[7] as u64) << 8
+        | data[6] as u64)
+        * 1000;
+
+    let total_calories_kcal =
+        ((data[12] & 0x01) as u32) << 16 | (data[11] as u32) << 8 | data[10] as u32;
+
+    // encodeTotals stores climbMeter_mm/100; raw_bits/10000 = metres
+    let climb_raw = ((data[15] & 0x0F) as u32) << 16 | (data[14] as u32) << 8 | data[13] as u32;
+    let total_climb_m = climb_raw as f64 / 10000.0;
+
+    let year = (data[16] & 0x3F) as i32 + 2000;
+    let month = data[17];
+    let day = data[18] & 0x1F;
+    let reset_date = chrono::NaiveDate::from_ymd_opt(year, month as u32, day as u32);
+
+    Ok(Totals {
+        total_distance_km,
+        total_training_time_ms,
+        total_calories_kcal,
+        total_climb_m,
+        reset_date,
+    })
+}
+
 // GPS10 timezone index table — matches DATA_PROVIDER_GPS_10 in CommonTimeZoneDataProvider.as
 const TIMEZONE_LABELS: &[&str] = &[
     "GMT -12:00",

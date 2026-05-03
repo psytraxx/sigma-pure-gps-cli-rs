@@ -62,6 +62,12 @@ pub fn get_settings(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
     Ok(eeprom[272..272 + 32].to_vec())
 }
 
+/// Returns the 20-byte totals block from EEPROM offset 304.
+pub fn get_totals(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    let eeprom = load_eeprom(port)?;
+    Ok(eeprom[304..304 + 20].to_vec())
+}
+
 pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     // Step 1: notify start (fire-and-forget) + CMD_SEND_AGPS
     send(port, commands::CMD_TRANSFER_STARTED)?;
