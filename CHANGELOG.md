@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `get-settings` subcommand — reads device settings from EEPROM offset 272 and prints all fields (timezone, language, units, contrast, NFC, auto-pause, auto-lap distance, name, altitude/sea-level references)
 - `download-tracks` subcommand — reads all recorded tracks from device flash and saves them as GPX 1.1 files (one per track)
 - `src/decoder.rs` — decodes 65-byte log headers and 25/32-byte log entries; ported from `Gps10Decoder.as`
 - `src/gpx.rs` — GPX 1.1 writer with elevation, timestamps, speed and temperature extensions

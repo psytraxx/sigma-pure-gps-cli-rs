@@ -39,6 +39,8 @@ enum Command {
     ListPorts,
     /// Show unit information from the connected device
     Info,
+    /// Read device settings (timezone, language, units, contrast, …)
+    GetSettings,
     /// Download recorded tracks from the device and save as GPX files
     DownloadTracks {
         /// Directory to write GPX files into
@@ -65,6 +67,7 @@ async fn main() -> Result<()> {
         Command::DownloadAgps { output } => commands::download_agps::run(&output).await,
         Command::Update => commands::update::run(cli.port).await,
         Command::Info => commands::info::run(cli.port).await,
+        Command::GetSettings => commands::get_settings::run(cli.port).await,
         Command::DownloadTracks { output_dir } => {
             commands::download_tracks::run(cli.port, &output_dir).await
         }

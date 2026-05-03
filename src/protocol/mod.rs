@@ -56,6 +56,12 @@ pub fn print_unit_info(raw: &[u8]) {
     println!("Firmware version: {firmware}");
 }
 
+/// Returns the 32-byte settings block from EEPROM offset 272.
+pub fn get_settings(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    let eeprom = load_eeprom(port)?;
+    Ok(eeprom[272..272 + 32].to_vec())
+}
+
 pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     // Step 1: notify start (fire-and-forget) + CMD_SEND_AGPS
     send(port, commands::CMD_TRANSFER_STARTED)?;

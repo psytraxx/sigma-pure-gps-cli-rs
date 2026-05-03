@@ -1,6 +1,143 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 
+pub struct Settings {
+    pub time_zone: &'static str,
+    pub summer_time: bool,
+    pub clock_mode: u8,
+    pub language: &'static str,
+    pub auto_pause: bool,
+    pub speed_unit: &'static str,
+    pub altitude_reference: &'static str,
+    pub contrast: u8,
+    pub date_format: &'static str,
+    pub temperature_unit: &'static str,
+    pub altitude_unit: &'static str,
+    pub nfc_active: bool,
+    pub system_tone: bool,
+    pub actual_altitude_m: i32,
+    pub sea_level_mb: f64,
+    pub home_altitude1_m: i32,
+    pub home_altitude2_m: i32,
+    pub name: String,
+    pub auto_lap_distance_m: u16,
+}
+
+// GPS10 timezone index table — matches DATA_PROVIDER_GPS_10 in CommonTimeZoneDataProvider.as
+const TIMEZONE_LABELS: &[&str] = &[
+    "GMT -12:00",
+    "GMT -11:00",
+    "GMT -10:00",
+    "GMT -09:30",
+    "GMT -09:00",
+    "GMT -08:00",
+    "GMT -07:00",
+    "GMT -06:00",
+    "GMT -05:00",
+    "GMT -04:30",
+    "GMT -04:00",
+    "GMT -03:30",
+    "GMT -03:00",
+    "GMT -02:00",
+    "GMT -01:00",
+    "GMT +00:00",
+    "GMT +01:00",
+    "GMT +02:00",
+    "GMT +03:00",
+    "GMT +03:30",
+    "GMT +04:00",
+    "GMT +04:30",
+    "GMT +05:00",
+    "GMT +05:30",
+    "GMT +05:45",
+    "GMT +06:00",
+    "GMT +06:30",
+    "GMT +07:00",
+    "GMT +08:00",
+    "GMT +08:45",
+    "GMT +09:00",
+    "GMT +09:30",
+    "GMT +10:00",
+    "GMT +10:30",
+    "GMT +11:00",
+    "GMT +11:30",
+    "GMT +12:00",
+    "GMT +12:45",
+    "GMT +13:00",
+    "GMT +14:00",
+];
+
+/// Decodes a 32-byte settings slice from EEPROM offset 272 (ported from `Gps10Decoder.decodeSettings`).
+pub fn decode_settings(data: &[u8]) -> Result<Settings> {
+    if data.len() < 32 {
+        bail!("Settings data too short: {} bytes", data.len());
+    }
+    verify_checksum(data, 1)?;
+
+    let language = match data[1] & 0x07 {
+        0 => "en",
+        1 => "de",
+        2 => "fr",
+        3 => "it",
+        4 => "es",
+        5 => "nl",
+        6 => "pl",
+        _ => "?",
+    };
+
+    let mut name = String::new();
+    for &b in &data[11..20] {
+        if b == 0 {
+            break;
+        }
+        if b.is_ascii() {
+            name.push(b as char);
+        }
+    }
+
+    Ok(Settings {
+        time_zone: TIMEZONE_LABELS
+            .get((data[0] & 0x3F) as usize)
+            .copied()
+            .unwrap_or("?"),
+        summer_time: (data[0] >> 6) & 1 == 1,
+        clock_mode: if (data[0] >> 7) & 1 == 0 { 24 } else { 12 },
+        language,
+        auto_pause: (data[1] >> 3) & 1 == 1,
+        speed_unit: if (data[1] >> 4) & 1 == 0 {
+            "km/h"
+        } else {
+            "mph"
+        },
+        altitude_reference: if (data[1] >> 5) & 1 == 0 {
+            "actual altitude"
+        } else {
+            "sea level"
+        },
+        contrast: ((data[1] >> 6) & 0x03) + 1,
+        date_format: if data[2] & 1 == 0 {
+            "DD-MM-YY"
+        } else {
+            "MM-DD-YY"
+        },
+        temperature_unit: if (data[2] >> 1) & 1 == 0 {
+            "°C"
+        } else {
+            "°F"
+        },
+        altitude_unit: if (data[2] >> 2) & 1 == 0 { "m" } else { "ft" },
+        nfc_active: (data[2] >> 3) & 1 == 1,
+        system_tone: (data[2] >> 4) & 1 == 1,
+        // AS3: (raw - 10000) * 100 cm → divide by 100 = raw - 10000 metres
+        actual_altitude_m: ((data[4] as i32) << 8 | data[3] as i32) - 10000,
+        sea_level_mb: ((((data[6] as u16) << 8 | data[5] as u16) & 0x07FF) as f64) / 10.0 + 900.0,
+        home_altitude1_m: ((data[8] as i32) << 8 | data[7] as i32) - 10000,
+        home_altitude2_m: ((data[10] as i32) << 8 | data[9] as i32) - 10000,
+        name,
+        auto_lap_distance_m: (data[21] as u16) << 8 | data[20] as u16,
+    })
+}
+
 pub struct LogHeader {
     pub start_date: DateTime<Utc>,
     pub start_addr: u32,
