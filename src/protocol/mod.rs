@@ -34,13 +34,24 @@ pub fn print_unit_info(raw: &[u8]) {
         println!("Unit info response too short ({} bytes)", raw.len());
         return;
     }
-    // [0..4] = 5-byte header, [5..10] = serial number, [69..74] = firmware version
-    let serial = &raw[5..11];
-    let firmware = &raw[69..75];
-    let serial_str = String::from_utf8_lossy(serial);
-    let firmware_str = String::from_utf8_lossy(firmware);
-    println!("Serial number:    {serial_str}");
-    println!("Firmware version: {firmware_str}");
+    // Strip 5-byte header and trailing checksum; serial = payload[0..6], firmware = payload[64..70]
+    let serial_bytes = &raw[5..11];
+    let firmware_bytes = &raw[69..75];
+
+    // Serial number: 6-byte little-endian integer
+    let serial: u64 = serial_bytes
+        .iter()
+        .enumerate()
+        .fold(0u64, |acc, (i, &b)| acc + (b as u64) * (1u64 << (i * 8)));
+
+    // Firmware: byte[1] treated as BCD-style decimal (toString(16) parsed as base-10)
+    // e.g. 0x32 -> "32" -> 32 -> "3.2"
+    let fw_raw = format!("{:02X}", firmware_bytes[1]);
+    let fw_val: u32 = fw_raw.parse().unwrap_or(0);
+    let firmware = format!("{}.{}", fw_val / 10, fw_val % 10);
+
+    println!("Serial number:    {serial}");
+    println!("Firmware version: {firmware}");
 }
 
 pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {

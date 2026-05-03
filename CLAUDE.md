@@ -36,6 +36,17 @@ Single-binary CLI tool. `main.rs` contains only arg parsing and dispatch. Each s
 
 **`src/gpx.rs`** — Writes GPX 1.1 files from decoded track data.
 
+## Implementing new features
+
+Before implementing any new feature or protocol detail, always check the decompiled ActionScript source files in `source/decompiled/scripts/` first. They are the authoritative reference for decoding logic, byte layouts, and command sequences.
+
+Key files:
+- `handler/dockingstation/Gps10DSHandler.as` — device detection, unit info command
+- `handler/Gps10Handler.as` — full USB state machine, all command constants
+- `decoder/Gps10Decoder.as` — all binary decoding logic
+- `core/agps/AgpsLoader.as` — AGPS download and validity date decoding
+- `utils/ChecksumUtil.as` — checksum algorithm
+
 ## After every code change
 
 ```bash
