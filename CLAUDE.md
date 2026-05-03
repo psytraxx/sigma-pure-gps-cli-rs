@@ -20,19 +20,21 @@ cargo test                           # run tests
 
 ## Architecture
 
-Single-binary CLI tool (`src/main.rs`) with these modules:
+Single-binary CLI tool. `main.rs` contains only arg parsing and dispatch. Each subcommand is a module under `src/commands/`. To add a new subcommand: create `src/commands/my_cmd.rs` with a `pub async fn run(...)`, register it in `src/commands/mod.rs`, add the variant to `Command` in `main.rs`, and wire it in `match cli.command`.
 
-**`src/downloader.rs`** — Downloads AGPS satellite prediction data from u-blox AssistNow servers. Two fallback URLs are tried in sequence. Payload capped at 32 760 bytes.
+**`src/commands/`** — One file per subcommand: `update`, `download`, `download_tracks`, `show_unit_info`, `list_ports`.
 
-**`src/device.rs`** — Enumerates serial ports via `serialport` and selects the first one with USB VID `0x1D9D` (Sigma Sport). On Windows this is a COMx port; on Linux `/dev/ttyACM0`.
+**`src/util.rs`** — Shared helpers: `resolve_port` (auto-detect or use CLI arg) and `build_http_client`.
 
-**`src/protocol/`** — Implements the SIGMA USB serial protocol. `mod.rs` contains all port I/O functions; `commands.rs` holds command byte constants and the flash-read command builder. All I/O is synchronous blocking; callers run this on `tokio::task::spawn_blocking`. See [`docs/protocol.md`](docs/protocol.md) for the full command reference.
+**`src/downloader.rs`** — Downloads AGPS satellite prediction data from u-blox AssistNow servers. Two fallback URLs tried in sequence. Payload capped at 32 760 bytes.
 
-**`src/decoder.rs`** — Decodes binary log data read from device flash into `LogHeader` and `TrackPoint` structs. Ported from `source/decompiled/scripts/decoder/Gps10Decoder.as`.
+**`src/device.rs`** — Enumerates serial ports via `serialport` and selects the first with USB VID `0x1D9D` (Sigma Sport).
+
+**`src/protocol/`** — SIGMA USB serial protocol. `mod.rs` has all port I/O functions; `commands.rs` holds byte constants and the flash-read command builder. All I/O is synchronous blocking (callers use `tokio::task::spawn_blocking`). See [`docs/protocol.md`](docs/protocol.md) for the full reference.
+
+**`src/decoder.rs`** — Decodes binary log data into `LogHeader` and `TrackPoint` structs. Ported from `Gps10Decoder.as`.
 
 **`src/gpx.rs`** — Writes GPX 1.1 files from decoded track data.
-
-**`src/main.rs`** — `clap`-based CLI; async via `tokio`. Subcommands: `update`, `download`, `list-ports`, `show-unit-info`, `download-tracks`.
 
 ## After every code change
 

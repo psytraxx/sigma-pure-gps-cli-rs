@@ -17,3 +17,10 @@
 ### Documentation
 - [`docs/protocol.md`](docs/protocol.md) — comprehensive USB protocol reference reverse-engineered from `DataCenter_Desktop.swf`
 - [`CLAUDE.md`](CLAUDE.md) — updated with new modules, commands, and post-change checklist
+
+## Restructure
+
+### Changed
+- Each subcommand is now its own file under `src/commands/` — adding a new command means adding one file and two lines in `main.rs`
+- `src/util.rs` added for shared `resolve_port` and `build_http_client` helpers
+- `src/main.rs` reduced to arg parsing and dispatch only
