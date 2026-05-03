@@ -8,8 +8,8 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 | 2 | Upload AGPS data to device | ✅ | ✅ `update` |
 | 3 | Download AGPS data to file (no device) | ✅ | ✅ `download-agps` |
 | 4 | Download activity log headers | ✅ | ✅ `download-tracks` |
-| 5 | Download activity log data (GPS points) | ✅ | ✅ `download-tracks` |
-| 6 | Save tracks as GPX files | ✅ | ✅ `download-tracks` |
+| 5 | Download activity log data (GPS points) | ✅ | ✅ `download-tracks` / `download-tracks-raw` |
+| 6 | Save tracks as GPX files | ✅ | ✅ `download-tracks` (DEM-corrected) / `download-tracks-raw` (barometric) |
 | 7 | Check AGPS data sync date on device | ✅ | ✅ `agps-date` |
 | 8 | Read device settings (timezone, language, units, contrast, …) | ✅ | ✅ `get-settings` |
 | 9 | Write device settings (timezone, language, speed/temp/altitude units, date format, contrast, system tone, NFC, auto-pause, auto-lap distance, user name) | ✅ | ❌ |

@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- `download-tracks-raw` subcommand — downloads recorded tracks with raw barometric elevation (no correction); shares device I/O with `download-tracks` via `download_from_device()`
+- `download-tracks` now corrects elevation via Sigma's elevation service (`elevation.sigma-dc-control.com`) — single POST with all coordinates as a GeoJSON `LineString`, response provides elevation in mm
 - `agps-date` subcommand — reads the date of AGPS data stored on the device from flash address 0x1000; command sends `len-1=14`, response is 21 bytes; date decoded from payload bytes 10–12 (year+2000, month, day; ported from `AgpsLoader.decodeAgpsOfflineDataUploadDate`)
 - `get-totals` subcommand — reads cumulative totals from EEPROM offset 304 (total distance, training time, calories, climb, reset date); distance raw = mm → /1e6 = km; climb raw = mm/100 → /10000 = m; time raw × 1000 = ms
 - `get-settings` subcommand — reads device settings from EEPROM offset 272 and prints all fields (timezone, language, units, contrast, NFC, auto-pause, auto-lap distance, name, altitude/sea-level references); timezone displayed as named GMT offset using the GPS10 lookup table from `CommonTimeZoneDataProvider.as`

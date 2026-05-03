@@ -2,6 +2,7 @@ mod commands;
 mod decoder;
 mod device;
 mod downloader;
+mod elevation;
 mod gpx;
 mod protocol;
 mod util;
@@ -45,8 +46,14 @@ enum Command {
     GetTotals,
     /// Show the date of the AGPS data currently on the device
     AgpsDate,
-    /// Download recorded tracks from the device and save as GPX files
+    /// Download recorded tracks from the device, correct elevation via Sigma elevation service
     DownloadTracks {
+        /// Directory to write GPX files into
+        #[arg(default_value = ".")]
+        output_dir: String,
+    },
+    /// Download recorded tracks from the device with raw barometric elevation (no correction)
+    DownloadTracksRaw {
         /// Directory to write GPX files into
         #[arg(default_value = ".")]
         output_dir: String,
@@ -76,6 +83,9 @@ async fn main() -> Result<()> {
         Command::AgpsDate => commands::agps_date::run(cli.port).await,
         Command::DownloadTracks { output_dir } => {
             commands::download_tracks::run(cli.port, &output_dir).await
+        }
+        Command::DownloadTracksRaw { output_dir } => {
+            commands::download_tracks_raw::run(cli.port, &output_dir).await
         }
     }
 }

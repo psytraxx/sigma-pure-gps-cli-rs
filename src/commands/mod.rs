@@ -1,6 +1,7 @@
 pub mod agps_date;
 pub mod download_agps;
 pub mod download_tracks;
+pub mod download_tracks_raw;
 pub mod get_settings;
 pub mod get_totals;
 pub mod info;

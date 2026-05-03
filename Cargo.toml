@@ -11,6 +11,7 @@ path = "src/main.rs"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.13.3", features = [
     "rustls",
+    "json",
 ], default-features = false }
 serialport = "4"
 clap = { version = "4", features = ["derive"] }
@@ -20,3 +21,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 indicatif = "0.18.4"
 chrono = "0.4"
 quick-xml = { version = "0.39.2", features = ["serialize"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
