@@ -10,7 +10,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "sigma-pure-gps-updater")]
+#[command(name = "sigma-pure-gps-cli")]
 #[command(about = "Manage the Sigma Pure GPS (Gps10) — update AGPS data and download tracks")]
 struct Cli {
     #[command(subcommand)]

@@ -13,7 +13,7 @@ pub fn resolve_port(port_arg: Option<String>) -> Result<String> {
 
 pub fn build_http_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .user_agent("sigma-pure-gps-updater/0.1")
+        .user_agent("sigma-pure-gps-cli/0.1")
         .build()
         .context("Failed to build HTTP client")
 }
