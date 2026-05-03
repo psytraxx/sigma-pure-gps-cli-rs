@@ -24,10 +24,11 @@ pub fn load_unit_info(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
 
 /// Reads and discards the full EEPROM. The original app always does this before writing AGPS
 /// data — the device will not respond to CMD_SEND_AGPS without the prior EEPROM read.
-pub fn load_eeprom(port: &mut Box<dyn SerialPort>) -> Result<()> {
+pub fn load_eeprom(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
     send(port, commands::CMD_GET_COMPLETE_EEPROM)?;
-    recv(port, 1030)?;
-    Ok(())
+    let raw = recv(port, 1030)?;
+    // Strip 5-byte header and trailing checksum; payload is 1024 bytes
+    Ok(raw[5..5 + 1024].to_vec())
 }
 
 pub fn print_unit_info(raw: &[u8]) {
@@ -88,11 +89,17 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Returns the number of log headers stored on the device.
-pub fn get_log_header_count(port: &mut Box<dyn SerialPort>) -> Result<u8> {
+pub struct LogHeaderMeta {
+    pub count: u8,
+}
+
+/// Returns the number of stored log headers.
+pub fn get_log_header_count(port: &mut Box<dyn SerialPort>) -> Result<LogHeaderMeta> {
     send(port, commands::CMD_GET_LOG_HEADER_COUNT)?;
     let reply = recv(port, 8)?;
-    Ok(reply[5])
+    debug!("log header count reply: {:02X?}", reply);
+    let count = reply[5];
+    Ok(LogHeaderMeta { count })
 }
 
 /// Returns the raw bytes for all log headers (n × 65 bytes, stripped of the 5-byte response
@@ -100,12 +107,13 @@ pub fn get_log_header_count(port: &mut Box<dyn SerialPort>) -> Result<u8> {
 pub fn get_log_headers(port: &mut Box<dyn SerialPort>, count: u8) -> Result<Vec<u8>> {
     let n = count as u32;
     let len = n * 65;
-    let start = commands::LOG_HEADER_END - len + 1;
-    let cmd = commands::build_flash_read_cmd(start, len);
+    let start = 0x1F_DFFFu32 - len + 1;
+    // AS3 sends len-1 as the command length but reads len+6 bytes back
+    let cmd = commands::build_flash_read_cmd(start, len - 1);
     send(port, &cmd)?;
-    // Response: 5-byte header + len bytes + 1 checksum
     let total = (len + 6) as usize;
     let raw = recv(port, total)?;
+    verify_checksum_seed0(&raw)?;
     Ok(raw[5..5 + len as usize].to_vec())
 }
 
@@ -132,4 +140,18 @@ fn recv(port: &mut Box<dyn SerialPort>, n: usize) -> Result<Vec<u8>> {
     let mut buf = vec![0u8; n];
     port.read_exact(&mut buf).context("Serial read failed")?;
     Ok(buf)
+}
+
+fn verify_checksum_seed0(data: &[u8]) -> Result<()> {
+    if data.is_empty() {
+        anyhow::bail!("Empty response");
+    }
+    let expected = data[data.len() - 1];
+    let computed = data[..data.len() - 1]
+        .iter()
+        .fold(0u8, |acc, &b| acc.wrapping_add(b));
+    if computed != expected {
+        anyhow::bail!("Response checksum mismatch: computed {computed:#04x}, got {expected:#04x}");
+    }
+    Ok(())
 }

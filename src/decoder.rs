@@ -128,8 +128,9 @@ fn decode_log_entry(e: &[u8], elapsed_ms: u64, is_pause: bool) -> TrackPoint {
     let altitude_m = altitude_mm as f64 / 1000.0;
     let temperature_c = e[5] as i8 - 10;
 
+    // Both direction bits live in e[13]: bit4=North/South, bit5=East/West
     let lat = decode_coord(e[10], e[11], e[12], e[13], true);
-    let lon = decode_coord(e[14], e[15], e[16], e[17], false);
+    let lon = decode_coord(e[14], e[15], e[16], e[13], false);
 
     TrackPoint {
         latitude: lat,

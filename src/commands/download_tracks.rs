@@ -8,17 +8,21 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
     let output_dir = output_dir.to_owned();
     tokio::task::spawn_blocking(move || {
         let mut port = crate::protocol::open_port(&port_name)?;
+        crate::protocol::load_unit_info(&mut port)?;
+        crate::protocol::load_eeprom(&mut port)?;
 
-        let count = crate::protocol::get_log_header_count(&mut port)?;
-        info!("Found {count} track(s) on device");
-        if count == 0 {
+        let meta = crate::protocol::get_log_header_count(&mut port)?;
+        info!("Found {} track(s) on device", meta.count);
+        if meta.count == 0 {
             return Ok(());
         }
 
-        let header_bytes = crate::protocol::get_log_headers(&mut port, count)?;
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        let header_bytes = crate::protocol::get_log_headers(&mut port, meta.count)?;
         std::fs::create_dir_all(&output_dir)?;
 
-        for i in 0..count as usize {
+        for i in 0..meta.count as usize {
             let h_slice = &header_bytes[i * 65..(i + 1) * 65];
             let header = match crate::decoder::decode_log_header(h_slice) {
                 Ok(h) => h,
@@ -31,7 +35,7 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
             info!(
                 "Track {}/{}: {} — {:.1} km",
                 i + 1,
-                count,
+                meta.count,
                 header.start_date.format("%Y-%m-%d %H:%M"),
                 header.distance_m as f64 / 1000.0
             );

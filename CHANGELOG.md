@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- `download-tracks` checksum mismatch on log header read — flash-read command must send `len-1` as the length field but expect `len+6` bytes back (ported from AS3 `loadFromDC`); outer response frame validated with seed 0; log header base address corrected to `0x1FDFFF` (AS3 constant `2088959`), was incorrectly `0x1FFFFF`
+- `download-tracks` longitude coordinates decoded with wrong sign — both North/South and East/West direction bits live in byte 13 of each log entry (AS3: `param2[13] >> 4` for lat, `param2[13] >> 5` for lon); longitude was incorrectly reading from byte 17
+- Removed debug flash-address scan loop and EEPROM offset logging from `download-tracks`
+
 ### Added
 - `download-tracks` subcommand — reads all recorded tracks from device flash and saves them as GPX 1.1 files (one per track)
 - `src/decoder.rs` — decodes 65-byte log headers and 25/32-byte log entries; ported from `Gps10Decoder.as`

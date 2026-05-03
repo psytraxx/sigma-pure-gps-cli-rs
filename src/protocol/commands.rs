@@ -33,9 +33,6 @@ pub const CMD_GET_LOG_HEADER_COUNT: &[u8] = &[
     0x54, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60,
 ];
 
-/// Flash address where log headers end (top of log flash space).
-pub const LOG_HEADER_END: u32 = 0x1F_FFFF;
-
 /// Builds a `86 12 00 00 00 <start 24-bit LE> <len 24-bit LE> <checksum>` flash-read command.
 pub fn build_flash_read_cmd(start: u32, len: u32) -> Vec<u8> {
     let mut cmd = vec![
