@@ -128,9 +128,12 @@ fn decode_log_entry(e: &[u8], elapsed_ms: u64, is_pause: bool) -> TrackPoint {
     let altitude_m = altitude_mm as f64 / 1000.0;
     let temperature_c = e[5] as i8 - 10;
 
-    // Both direction bits live in e[13]: bit4=North/South, bit5=East/West
-    let lat = decode_coord(e[10], e[11], e[12], e[13], true);
-    let lon = decode_coord(e[14], e[15], e[16], e[13], false);
+    // e[13] carries both direction flags: bit4=North(+)/South(-), bit5=East(+)/West(-)
+    // Latitude minutes high nibble: e[13] & 0x0F; longitude minutes high nibble: e[17] & 0x0F
+    let lat_north = (e[13] >> 4) & 0x01 == 1;
+    let lon_east = (e[13] >> 5) & 0x01 == 1;
+    let lat = decode_coord(e[10], e[11], e[12], e[13], lat_north);
+    let lon = decode_coord(e[14], e[15], e[16], e[17], lon_east);
 
     TrackPoint {
         latitude: lat,
@@ -143,20 +146,13 @@ fn decode_log_entry(e: &[u8], elapsed_ms: u64, is_pause: bool) -> TrackPoint {
     }
 }
 
-/// Decodes the DdMmmmmm coordinate format used by both log entries and headers.
-///
-/// Latitude (is_lat=true):  bit 4 of m2 → 1=North (+), 0=South (−)
-/// Longitude (is_lat=false): bit 5 of m2 → 1=East (+), 0=West (−)
-fn decode_coord(degree: u8, m0: u8, m1: u8, m2: u8, is_lat: bool) -> f64 {
+/// Decodes the DdMmmmmm coordinate format.
+/// `m2` supplies the upper 4 bits of the 20-bit minutes field (lower nibble).
+/// `positive` is true for North (latitude) or East (longitude).
+fn decode_coord(degree: u8, m0: u8, m1: u8, m2: u8, positive: bool) -> f64 {
     let minutes = (((m2 as u32 & 0x0F) << 16) | ((m1 as u32) << 8) | m0 as u32) as f64 / 10000.0;
-    // bit=1 means positive direction (North / East); bit=0 means negative (South / West)
-    let positive_bit = if is_lat {
-        (m2 >> 4) & 0x01
-    } else {
-        (m2 >> 5) & 0x01
-    };
     let decimal = degree as f64 + minutes / 60.0;
-    if positive_bit == 0 { -decimal } else { decimal }
+    if positive { decimal } else { -decimal }
 }
 
 fn verify_checksum(data: &[u8], seed: u8) -> Result<()> {
