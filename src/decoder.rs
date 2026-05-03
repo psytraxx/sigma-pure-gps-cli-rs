@@ -128,11 +128,11 @@ pub fn decode_settings(data: &[u8]) -> Result<Settings> {
         altitude_unit: if (data[2] >> 2) & 1 == 0 { "m" } else { "ft" },
         nfc_active: (data[2] >> 3) & 1 == 1,
         system_tone: (data[2] >> 4) & 1 == 1,
-        // AS3: (raw - 10000) * 100 cm → divide by 100 = raw - 10000 metres
-        actual_altitude_m: ((data[4] as i32) << 8 | data[3] as i32) - 10000,
+        // AS3: (raw - 10000) * 100 cm; raw unit = dm → / 10 = metres
+        actual_altitude_m: (((data[4] as i32) << 8 | data[3] as i32) - 10000) / 10,
         sea_level_mb: ((((data[6] as u16) << 8 | data[5] as u16) & 0x07FF) as f64) / 10.0 + 900.0,
-        home_altitude1_m: ((data[8] as i32) << 8 | data[7] as i32) - 10000,
-        home_altitude2_m: ((data[10] as i32) << 8 | data[9] as i32) - 10000,
+        home_altitude1_m: (((data[8] as i32) << 8 | data[7] as i32) - 10000) / 10,
+        home_altitude2_m: (((data[10] as i32) << 8 | data[9] as i32) - 10000) / 10,
         name,
         auto_lap_distance_m: (data[21] as u16) << 8 | data[20] as u16,
     })
