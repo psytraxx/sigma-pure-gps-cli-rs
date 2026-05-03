@@ -16,17 +16,18 @@ pub fn open_port(port_name: &str) -> Result<Box<dyn SerialPort>> {
         .with_context(|| format!("Failed to open {port_name}"))
 }
 
-/// Returns `true` if the device acknowledged the poll.
-pub fn check_device_connected(port: &mut Box<dyn SerialPort>) -> Result<bool> {
-    send(port, commands::CMD_CHECK_CONNECTED)?;
-    let reply = recv(port, 4)?;
-    Ok(reply.first() == Some(&0x11))
-}
-
 /// Returns the raw 76-byte unit info response.
 pub fn load_unit_info(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
     send(port, commands::CMD_LOAD_UNIT_INFO)?;
     recv(port, 76)
+}
+
+/// Reads and discards the full EEPROM. The original app always does this before writing AGPS
+/// data — the device will not respond to CMD_SEND_AGPS without the prior EEPROM read.
+pub fn load_eeprom(port: &mut Box<dyn SerialPort>) -> Result<()> {
+    send(port, commands::CMD_GET_COMPLETE_EEPROM)?;
+    recv(port, 1030)?;
+    Ok(())
 }
 
 pub fn print_unit_info(raw: &[u8]) {

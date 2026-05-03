@@ -10,6 +10,8 @@
 - `src/protocol/mod.rs` — `get_log_header_count`, `get_log_headers`, `get_log_data`
 
 ### Fixed
+- `update` and `show-unit-info` commands hung/timed out requiring USB reconnect — root cause was `CMD_CHECK_CONNECTED` (`0xF4`) being sent manually; in the original Flash app this command is handled asynchronously by the USB driver layer and must not be sent as part of a command sequence; removed `check_device_connected` entirely
+- `update` command timed out on AGPS upload — device requires `CMD_LOAD_UNIT_INFO` → `CMD_GET_COMPLETE_EEPROM` before accepting `CMD_SEND_AGPS`, matching the original app's handshake; added both steps to the upload flow
 - `show-unit-info` serial number and firmware version displayed garbled bytes — corrected decoding to match `Gps10Decoder.decodeInitialInformation`: serial is a 6-byte little-endian integer; firmware byte is formatted as hex then parsed as decimal (e.g. `0x42` → `"42"` → `4.2`)
 
 ### Changed

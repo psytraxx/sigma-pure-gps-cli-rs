@@ -17,8 +17,11 @@ pub const CMD_SEND_END: &[u8] = &[0xAB, 0x08, 0x00, 0x00, 0x00, 0x01, 0x02, 0xB6
 /// Confirms a successful transfer (no response expected).
 pub const CMD_TRANSFER_SUCCESS: &[u8] = &[0x57, 0x08, 0x00, 0x00, 0x00, 0x02, 0x01, 0x62];
 
-/// Polls whether a unit is connected; device replies with 4 bytes (byte 0 == 0x11 → connected).
-pub const CMD_CHECK_CONNECTED: &[u8] = &[0xF4];
+/// Reads the full 1024-byte EEPROM; device replies with 1030 bytes (5 header + 1024 + checksum).
+/// The original app always reads EEPROM before writing AGPS data.
+pub const CMD_GET_COMPLETE_EEPROM: &[u8] = &[
+    0x56, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x03, 0x00, 0x64,
+];
 
 /// Requests device identification; device replies with 76 bytes.
 pub const CMD_LOAD_UNIT_INFO: &[u8] = &[

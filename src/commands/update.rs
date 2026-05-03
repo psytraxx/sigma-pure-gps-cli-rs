@@ -26,10 +26,10 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
 
 fn upload(port_name: String, data: Vec<u8>) -> Result<()> {
     let mut port = crate::protocol::open_port(&port_name)?;
-    info!("Checking device connection...");
-    if !crate::protocol::check_device_connected(&mut port)? {
-        info!("Device poll did not confirm connection — attempting upload anyway");
-    }
+    info!("Loading unit info...");
+    crate::protocol::load_unit_info(&mut port)?;
+    info!("Reading EEPROM...");
+    crate::protocol::load_eeprom(&mut port)?;
     info!("Uploading {} bytes of AGPS data...", data.len());
     crate::protocol::upload_agps(&mut port, &data)?;
     Ok(())
