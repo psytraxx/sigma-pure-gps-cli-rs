@@ -5,14 +5,18 @@ A command-line tool for managing the **Sigma Sport Pure GPS** (GPS10) GPS bicycl
 ## Features
 
 - Upload u-blox AssistNow AGPS data for faster GPS fixes
-- Download recorded tracks from device flash as GPX 1.1 files
+- Download recorded tracks from device flash as GPX 1.1 files (with or without elevation correction)
 - Query device info (serial number, firmware version)
+- Read device settings (timezone, language, units, contrast, …)
+- Read cumulative totals (distance, time, calories, climb)
+- Show the AGPS data date currently stored on the device
 - Auto-detect the device by USB VID — no manual port selection needed
 
 ## Requirements
 
 - Rust toolchain (stable)
 - Sigma Sport Pure GPS (GPS10) connected via USB
+- A u-blox AssistNow token in `UBLOX_AGPS_TOKEN` (see [Configuration](#configuration))
 - **Linux:** `cdc_acm` kernel module (usually loaded automatically); add yourself to the `dialout` group: `sudo usermod -aG dialout $USER`
 - **Windows:** Device appears as `COMx`, no extra drivers needed
 - **macOS:** Device appears as `/dev/tty.usbmodem*`
@@ -20,10 +24,25 @@ A command-line tool for managing the **Sigma Sport Pure GPS** (GPS10) GPS bicycl
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/sigma-pure-gps-cli-rs
+git clone https://github.com/psytraxx/sigma-pure-gps-cli-rs
 cd sigma-pure-gps-cli-rs
 cargo build --release
 # binary at target/release/sigma-pure-gps-cli
+```
+
+## Configuration
+
+AGPS downloads require a **u-blox AssistNow token**. [Request a free evaluation token](https://www.u-blox.com/en/assistnow-service-evaluation-token-request), then create a `.env` file in the project root:
+
+```bash
+cp .env.example .env
+# edit .env and set UBLOX_AGPS_TOKEN=your_token_here
+```
+
+Or export the variable directly:
+
+```bash
+export UBLOX_AGPS_TOKEN=your_token_here
 ```
 
 ## Usage
@@ -39,8 +58,12 @@ Options:
 Commands:
   update              Download AGPS data and upload to device
   download-agps       Download AGPS data to a local file (no device needed)
-  download-tracks     Download recorded tracks from device as GPX files
+  download-tracks     Download recorded tracks with elevation correction via Sigma service
+  download-tracks-raw Download recorded tracks with raw barometric elevation (no correction)
   info                Query device serial number and firmware version
+  get-settings        Read device settings (timezone, language, units, contrast, …)
+  get-totals          Read cumulative totals (distance, time, calories, climb)
+  agps-date           Show the AGPS data date currently stored on the device
   list-ports          List available serial ports with USB VID/PID info
 ```
 
@@ -57,7 +80,11 @@ sigma-pure-gps-cli update
 Reads all tracks stored in device flash memory and writes them as individual GPX files.
 
 ```bash
+# with elevation correction (recommended)
 sigma-pure-gps-cli download-tracks ./tracks
+
+# with raw barometric elevation
+sigma-pure-gps-cli download-tracks-raw ./tracks
 ```
 
 Each track is saved as `track_NNN.gpx` with elevation, speed, and temperature extensions.
@@ -72,6 +99,9 @@ sigma-pure-gps-cli download-agps agps.bin
 
 ```bash
 sigma-pure-gps-cli info
+sigma-pure-gps-cli get-settings
+sigma-pure-gps-cli get-totals
+sigma-pure-gps-cli agps-date
 ```
 
 ### List serial ports

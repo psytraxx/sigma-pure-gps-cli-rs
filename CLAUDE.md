@@ -5,17 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-cargo build                          # debug build
-cargo build --release                # release build
-cargo run -- --help                  # show CLI help
-cargo run -- list-ports              # list serial ports
-cargo run -- info                     # query connected device
-cargo run -- update                  # download AGPS + upload
-cargo run -- download-agps agps.bin  # download AGPS only, save to file
-cargo run -- download-tracks ./out   # download recorded tracks as GPX
-cargo run -- -v update               # verbose (debug logging)
-cargo clippy                         # lint
-cargo test                           # run tests
+cargo build                               # debug build
+cargo build --release                     # release build
+cargo run -- --help                       # show CLI help
+cargo run -- list-ports                   # list serial ports
+cargo run -- info                         # query connected device
+cargo run -- update                       # download AGPS + upload
+cargo run -- download-agps agps.bin       # download AGPS only, save to file
+cargo run -- download-tracks ./out        # download tracks with elevation correction
+cargo run -- download-tracks-raw ./out    # download tracks with raw barometric elevation
+cargo run -- get-settings                 # read device settings
+cargo run -- get-totals                   # read cumulative totals
+cargo run -- agps-date                    # show AGPS data date on device
+cargo run -- -v update                    # verbose (debug logging)
+cargo clippy                              # lint
+cargo test                                # run tests
 ```
 
 ## Architecture
