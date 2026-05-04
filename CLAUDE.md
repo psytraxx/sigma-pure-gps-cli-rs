@@ -62,3 +62,64 @@ cargo fmt
 
 - Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` — always, for every change
 - Update [`docs/protocol.md`](docs/protocol.md) if any protocol details changed
+
+## Releasing
+
+The repository uses semantic versioning (v0.1.0, v0.2.0, v1.0.0, etc.) and a GitHub Actions workflow to build and publish binaries.
+
+### Release checklist
+
+1. **Decide on version bump** using [semver](https://semver.org/):
+   - Patch (v0.1.1): bug fixes only
+   - Minor (v0.2.0): new backwards-compatible features
+   - Major (v1.0.0): breaking changes
+
+2. **Update `Cargo.toml`** — change `version = "..."` to the new version (without the `v` prefix)
+
+3. **Organize `CHANGELOG.md`**:
+   - Rename the top-level section from `## Unreleased` to `## [X.Y.Z]` (using the same version as Cargo.toml, without `v`)
+   - Add a new `## Unreleased` section below it for future changes
+   - Example:
+     ```markdown
+     ## [0.2.0]
+
+     ### Added
+     - New feature X
+     - New feature Y
+
+     ### Fixed
+     - Bug fix Z
+
+     ## Unreleased
+
+     (nothing yet)
+     ```
+
+4. **Commit and push** these changes to `main`:
+   ```bash
+   git add Cargo.toml CHANGELOG.md
+   git commit -m "Release v0.2.0"
+   git push origin main
+   ```
+
+5. **Create the GitHub Release**:
+   - Go to https://github.com/psytraxx/sigma-pure-gps-cli-rs/releases
+   - Click **Draft a new release**
+   - Tag version: `v0.2.0` (must match the tag format `vX.Y.Z`)
+   - Release title: `v0.2.0` or `Release 0.2.0`
+   - Release description: Copy the relevant section from `CHANGELOG.md` (everything between the `## [X.Y.Z]` header and the next section)
+   - Click **Publish release**
+
+The GitHub Actions workflow will automatically:
+- Validate that the tag matches semantic versioning (`vX.Y.Z`)
+- Validate that `Cargo.toml` version matches the tag version
+- Validate that `CHANGELOG.md` has a section for the version
+- Build binaries for: Linux x86_64, Linux arm64, Windows x86_64, macOS arm64
+- Upload all binaries as release assets
+
+### Build targets
+
+- `x86_64-unknown-linux-gnu` → `sigma-pure-gps-cli-X.Y.Z-linux-x86_64`
+- `aarch64-unknown-linux-gnu` → `sigma-pure-gps-cli-X.Y.Z-linux-arm64`
+- `x86_64-pc-windows-msvc` → `sigma-pure-gps-cli-X.Y.Z-windows-x86_64.exe`
+- `aarch64-apple-darwin` → `sigma-pure-gps-cli-X.Y.Z-macos-arm64`

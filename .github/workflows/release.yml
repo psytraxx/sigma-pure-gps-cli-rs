@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Tag '$TAG' does not match semantic versioning (vX.Y.Z)"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Validate Cargo.toml version
+        run: |
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Error: Cargo.toml version ($CARGO_VERSION) does not match tag version ($VERSION)"
+            exit 1
+          fi
+          echo "✓ Cargo.toml version matches tag"
+
+      - name: Validate CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+            echo "Error: CHANGELOG.md does not contain a section for version $VERSION"
+            echo "Expected format: ## [$VERSION]"
+            exit 1
+          fi
+          echo "✓ CHANGELOG.md contains version $VERSION"
+
+  build:
+    needs: validate
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            artifact_name: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            artifact_name: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-linux-arm64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            artifact_name: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-windows-x86_64.exe
+          - target: aarch64-apple-darwin
+            runner: macos-latest-large
+            artifact_name: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-macos-arm64
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: cargo install cross
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+        shell: bash
+
+      - name: Locate binary
+        id: binary
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            BINARY="target/${{ matrix.target }}/release/sigma-pure-gps-cli.exe"
+          else
+            BINARY="target/${{ matrix.target }}/release/sigma-pure-gps-cli"
+          fi
+          if [ ! -f "$BINARY" ]; then
+            echo "Error: Binary not found at $BINARY"
+            exit 1
+          fi
+          echo "binary=$BINARY" >> $GITHUB_OUTPUT
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ steps.binary.outputs.binary }}
+          name: ${{ github.event.release.name }}
+          body: ${{ github.event.release.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

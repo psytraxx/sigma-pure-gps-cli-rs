@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.1.0]
 
 ### Added
 - `download-tracks-raw` subcommand — downloads recorded tracks with raw barometric elevation (no correction); shares device I/O with `download-tracks` via `download_from_device()`

@@ -2,6 +2,10 @@
 name = "sigma-pure-gps-cli"
 version = "0.1.0"
 edition = "2024"
+authors = ["psytraxx"]
+license = "MIT"
+repository = "https://github.com/psytraxx/sigma-pure-gps-cli-rs"
+description = "Command-line tool for managing Sigma Sport Pure GPS (GPS10) via USB"
 
 [[bin]]
 name = "sigma-pure-gps-cli"
