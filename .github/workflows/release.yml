@@ -16,7 +16,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Extract version from tag
         id: version
@@ -57,14 +57,14 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
-            artifact_name: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-linux-x86_64
+            platform: linux-x86_64
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-latest
-            artifact_name: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-linux-arm64
+            platform: linux-arm64
 
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
@@ -72,7 +72,7 @@ jobs:
 
       - name: Install cross (Linux ARM64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: cargo install cross
+        run: cargo install cross --locked
 
       - name: Build
         run: |
@@ -83,8 +83,7 @@ jobs:
           fi
         shell: bash
 
-      - name: Locate binary
-        id: binary
+      - name: Rename binary
         shell: bash
         run: |
           BINARY="target/${{ matrix.target }}/release/sigma-pure-gps-cli"
@@ -92,11 +91,10 @@ jobs:
             echo "Error: Binary not found at $BINARY"
             exit 1
           fi
-          echo "binary=$BINARY" >> $GITHUB_OUTPUT
+          cp "$BINARY" "sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-${{ matrix.platform }}"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ steps.binary.outputs.binary }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: sigma-pure-gps-cli-${{ needs.validate.outputs.version }}-${{ matrix.platform }}
+          token: ${{ secrets.GITHUB_TOKEN }}
