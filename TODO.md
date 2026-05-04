@@ -14,7 +14,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 | 8 | Read device settings (timezone, language, units, contrast, …) | ✅ | ✅ `get-settings` |
 | 9 | Write device settings (timezone, language, speed/temp/altitude units, date format, contrast, system tone, NFC, auto-pause, auto-lap distance, user name) | ✅ | ❌ |
 | 10 | Set altitude reference (actual altitude / sea level pressure) | ✅ | ❌ |
-| 11 | Set home altitude 1 & 2 | ✅ | ❌ |
+| 11 | Set home altitude 1 & 2 | ✅ | ✅ `set-home-altitude` |
 | 12 | Read cumulative totals (total distance, training time, calories, climb) | ✅ | ✅ `get-totals` |
 | 13 | Write cumulative totals back to device | ✅ | ❌ |
 | 14 | Configure sleep screen / watch face (16×59 px bitmap, clock & name position) | ✅ | ❌ |
@@ -32,6 +32,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 - [x] **`agps-date`** — read AGPS last-sync date from device; see `AgpsLoader.as` `decodeAgpsOfflineDataUploadDate`
 - [ ] **`set-waypoints`** — upload up to N named waypoints (EEPROM offset 336, 27 bytes each); see `Gps10Decoder.as` `encodePointNavigation`
 - [ ] **`set-sleep-screen`** — upload custom watch face bitmap (EEPROM offset 96, 172 bytes); see `Gps10Decoder.as` `encodeSleepScreen`
+- [x] **`set-home-altitude`** — set home altitude 1 and/or 2; encoding: raw = altitude_m × 10 + 10000 (16-bit LE) at settings offset +7/+9; UPDATE_FLAG_SETTINGS=16
 - [ ] **`set-altitude`** — set actual altitude or sea level pressure reference on device
 
 ## AS3 reference locations

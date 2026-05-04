@@ -5,6 +5,7 @@
 ### Added
 - `delete-tracks` subcommand — permanently erases all activity log data from the device; prompts for confirmation before proceeding; writes `UPDATE_FLAG_TRIP_DATA_RESET` (flag=4) update flags `[0, 6, 1, 8]` to EEPROM offset 80 and uploads the full 1024-byte EEPROM image via `CMD_SEND_EEPROM`
 - `CMD_SEND_EEPROM` protocol constant (`0x52 0x0C ...`) and `write_eeprom` / `delete_tracks_memory` functions in `src/protocol/`
+- `set-home-altitude` subcommand — sets home altitude 1 (`--alt1`) and/or home altitude 2 (`--alt2`) in metres on the device; patches the settings block (EEPROM offset 272, bytes +7/+9) with `raw = altitude_m × 10 + 10000` and writes the full EEPROM with `UPDATE_FLAG_SETTINGS=16`
 
 ## [0.1.0]
 

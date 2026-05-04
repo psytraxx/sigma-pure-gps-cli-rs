@@ -7,4 +7,5 @@ pub mod get_settings;
 pub mod get_totals;
 pub mod info;
 pub mod list_ports;
+pub mod set_home_altitude;
 pub mod update;

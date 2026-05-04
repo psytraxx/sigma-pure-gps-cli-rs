@@ -60,6 +60,15 @@ enum Command {
     },
     /// Permanently erase all activity data from the device (prompts for confirmation)
     DeleteTracks,
+    /// Set home altitude 1 and/or home altitude 2 on the device
+    SetHomeAltitude {
+        /// Home altitude 1 in metres
+        #[arg(long)]
+        alt1: Option<i32>,
+        /// Home altitude 2 in metres
+        #[arg(long)]
+        alt2: Option<i32>,
+    },
 }
 
 #[tokio::main]
@@ -92,5 +101,8 @@ async fn main() -> Result<()> {
             commands::download_tracks_raw::run(cli.port, &output_dir).await
         }
         Command::DeleteTracks => commands::delete_tracks::run(cli.port).await,
+        Command::SetHomeAltitude { alt1, alt2 } => {
+            commands::set_home_altitude::run(cli.port, alt1, alt2).await
+        }
     }
 }

@@ -12,6 +12,8 @@ A command-line tool for managing the **Sigma Sport Pure GPS** (GPS10) GPS bicycl
 - Read device settings (timezone, language, units, contrast, …)
 - Read cumulative totals (distance, time, calories, climb)
 - Show the AGPS data date currently stored on the device
+- Set home altitude 1 and 2 on the device
+- Delete all activity data from the device
 - Auto-detect the device by USB VID — no manual port selection needed
 
 ## Requirements
@@ -66,6 +68,8 @@ Commands:
   get-settings        Read device settings (timezone, language, units, contrast, …)
   get-totals          Read cumulative totals (distance, time, calories, climb)
   agps-date           Show the AGPS data date currently stored on the device
+  set-home-altitude   Set home altitude 1 and/or 2 on the device (in metres)
+  delete-tracks       Permanently erase all activity data from the device
   list-ports          List available serial ports with USB VID/PID info
 ```
 
@@ -104,6 +108,23 @@ sigma-pure-gps-cli info
 sigma-pure-gps-cli get-settings
 sigma-pure-gps-cli get-totals
 sigma-pure-gps-cli agps-date
+```
+
+### Set home altitude
+
+Writes one or both home altitude slots to the device (in metres). At least one flag is required.
+
+```bash
+sigma-pure-gps-cli set-home-altitude --alt1 442
+sigma-pure-gps-cli set-home-altitude --alt1 442 --alt2 442
+```
+
+### Delete all activity data
+
+Permanently erases all recorded tracks from device flash. Prompts for confirmation.
+
+```bash
+sigma-pure-gps-cli delete-tracks
 ```
 
 ### List serial ports

@@ -141,6 +141,46 @@ pub fn write_eeprom(port: &mut Box<dyn SerialPort>, eeprom: &[u8; 1024]) -> Resu
     Ok(())
 }
 
+/// Writes home altitude 1 and/or 2 into the settings block (EEPROM offset 272) and uploads
+/// the full EEPROM.
+///
+/// Encoding from encodeSettings in Gps10Decoder.as: raw = altitude_m * 10 + 10000 (16-bit LE).
+/// Update flag UPDATE_FLAG_SETTINGS=16 → flags [16, 2, 1, 20] at EEPROM offset 80.
+pub fn set_home_altitude(
+    port: &mut Box<dyn SerialPort>,
+    alt1_m: Option<i32>,
+    alt2_m: Option<i32>,
+) -> Result<()> {
+    let eeprom_vec = load_eeprom(port)?;
+    let mut eeprom: [u8; 1024] = eeprom_vec
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
+
+    let settings = &mut eeprom[272..272 + 32];
+
+    if let Some(m) = alt1_m {
+        let raw = (m * 10 + 10000) as u16;
+        settings[7] = (raw & 0xFF) as u8;
+        settings[8] = (raw >> 8) as u8;
+    }
+    if let Some(m) = alt2_m {
+        let raw = (m * 10 + 10000) as u16;
+        settings[9] = (raw & 0xFF) as u8;
+        settings[10] = (raw >> 8) as u8;
+    }
+
+    // Recalculate settings block checksum (seed=1, covers bytes 0..30).
+    let crc = settings[..31]
+        .iter()
+        .fold(1u8, |acc, &b| acc.wrapping_add(b));
+    eeprom[272 + 31] = crc;
+
+    // UPDATE_FLAG_SETTINGS=16: generateUpdateFlagData(16) → [16, 2, 1, 20].
+    eeprom[80..84].copy_from_slice(&[0x10, 0x02, 0x01, 0x14]);
+
+    write_eeprom(port, &eeprom)
+}
+
 /// Erases all activity log data on the device by writing the TRIP_DATA_RESET update flag.
 ///
 /// Reads the current EEPROM, patches offset 80 with update flags [0, 6, 1, 8]
