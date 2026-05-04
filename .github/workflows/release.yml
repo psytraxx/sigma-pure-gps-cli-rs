@@ -98,7 +98,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ steps.binary.outputs.binary }}
-          name: ${{ github.event.release.name }}
-          body: ${{ github.event.release.body }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
