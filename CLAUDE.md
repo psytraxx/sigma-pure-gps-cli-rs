@@ -114,12 +114,10 @@ The GitHub Actions workflow will automatically:
 - Validate that the tag matches semantic versioning (`vX.Y.Z`)
 - Validate that `Cargo.toml` version matches the tag version
 - Validate that `CHANGELOG.md` has a section for the version
-- Build binaries for: Linux x86_64, Linux arm64, Windows x86_64, macOS arm64
+- Build binaries for: Linux x86_64, Linux arm64
 - Upload all binaries as release assets
 
 ### Build targets
 
 - `x86_64-unknown-linux-gnu` → `sigma-pure-gps-cli-X.Y.Z-linux-x86_64`
 - `aarch64-unknown-linux-gnu` → `sigma-pure-gps-cli-X.Y.Z-linux-arm64`
-- `x86_64-pc-windows-msvc` → `sigma-pure-gps-cli-X.Y.Z-windows-x86_64.exe`
-- `aarch64-apple-darwin` → `sigma-pure-gps-cli-X.Y.Z-macos-arm64`
