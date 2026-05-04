@@ -69,6 +69,7 @@ cargo fmt
 ```
 
 - Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` — always, for every change
+- Update [`README.md`](README.md) — add the new subcommand to the commands table and add a usage section
 - Update [`docs/protocol.md`](docs/protocol.md) if any protocol details changed
 
 ## Releasing
