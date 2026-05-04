@@ -118,10 +118,6 @@ Pass `-v` (or `--verbose`) before any subcommand to enable debug output:
 sigma-pure-gps-cli -v update
 ```
 
-## Protocol
-
-The USB serial protocol was reverse-engineered from the original `DataCenter_Desktop.swf` Flash application. See [docs/protocol.md](docs/protocol.md) for the full reference.
-
 ## License
 
 MIT
