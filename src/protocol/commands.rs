@@ -33,6 +33,12 @@ pub const CMD_GET_LOG_HEADER_COUNT: &[u8] = &[
     0x54, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60,
 ];
 
+/// Writes the full 1024-byte EEPROM back to the device; device replies with 8 bytes.
+/// "82 12 0 0 0 0 4 0 0 0 0 98" (decimal) from Gps10Handler.as CMD_SEND_EEPROM.
+pub const CMD_SEND_EEPROM: &[u8] = &[
+    0x52, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x62,
+];
+
 /// Builds a `86 12 00 00 00 <start 24-bit LE> <len 24-bit LE> <checksum>` flash-read command.
 pub fn build_flash_read_cmd(start: u32, len: u32) -> Vec<u8> {
     let mut cmd = vec![

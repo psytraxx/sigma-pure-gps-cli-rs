@@ -58,6 +58,8 @@ enum Command {
         #[arg(default_value = ".")]
         output_dir: String,
     },
+    /// Permanently erase all activity data from the device (prompts for confirmation)
+    DeleteTracks,
 }
 
 #[tokio::main]
@@ -89,5 +91,6 @@ async fn main() -> Result<()> {
         Command::DownloadTracksRaw { output_dir } => {
             commands::download_tracks_raw::run(cli.port, &output_dir).await
         }
+        Command::DeleteTracks => commands::delete_tracks::run(cli.port).await,
     }
 }
