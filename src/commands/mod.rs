@@ -1,4 +1,5 @@
 pub mod agps_date;
+pub mod delete_tracks;
 pub mod download_agps;
 pub mod download_tracks;
 pub mod download_tracks_raw;

@@ -111,6 +111,56 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Writes a modified 1024-byte EEPROM image back to the device.
+///
+/// Sequence mirrors AGPS upload: CMD_TRANSFER_STARTED → CMD_SEND_EEPROM (recv 8) →
+/// CMD_SEND_START (recv 9) → 1024 bytes in 64-byte chunks → CMD_SEND_END (recv 9) →
+/// CMD_TRANSFER_SUCCESS.
+pub fn write_eeprom(port: &mut Box<dyn SerialPort>, eeprom: &[u8; 1024]) -> Result<()> {
+    send(port, commands::CMD_TRANSFER_STARTED)?;
+    send(port, commands::CMD_SEND_EEPROM)?;
+    let reply = recv(port, 8)?;
+    debug!("CMD_SEND_EEPROM reply: {:02X?}", reply);
+
+    send(port, commands::CMD_SEND_START)?;
+    let reply = recv(port, 9)?;
+    debug!("CMD_SEND_START reply: {:02X?}", reply);
+    std::thread::sleep(Duration::from_millis(50));
+
+    for chunk in eeprom.chunks(CHUNK_SIZE) {
+        send(port, chunk)?;
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    send(port, commands::CMD_SEND_END)?;
+    let reply = recv(port, 9)?;
+    debug!("CMD_SEND_END reply: {:02X?}", reply);
+    std::thread::sleep(Duration::from_millis(50));
+
+    send(port, commands::CMD_TRANSFER_SUCCESS)?;
+    Ok(())
+}
+
+/// Erases all activity log data on the device by writing the TRIP_DATA_RESET update flag.
+///
+/// Reads the current EEPROM, patches offset 80 with update flags [0, 6, 1, 8]
+/// (UPDATE_FLAG_TRIP_DATA_RESET=4, per generateUpdateFlagData in Gps10Handler.as), then
+/// writes the full 1024-byte image back.
+pub fn delete_tracks_memory(port: &mut Box<dyn SerialPort>) -> Result<()> {
+    let eeprom_vec = load_eeprom(port)?;
+    let mut eeprom: [u8; 1024] = eeprom_vec
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
+
+    // UPDATE_FLAGS_DEFAULT_DATA = [0, 2, 0, 3]; applying flag 4 (TRIP_DATA_RESET):
+    //   byte[1] |= 4 → 6, byte[1] |= 2 → 6 (already set), bit-count of byte[0]=0 plus 1 for
+    //   flag 4 → byte[2]=1, CRC = (0+6+1+seed_1) & 0xFF = 8.
+    let update_flags: [u8; 4] = [0x00, 0x06, 0x01, 0x08];
+    eeprom[80..84].copy_from_slice(&update_flags);
+
+    write_eeprom(port, &eeprom)
+}
+
 pub struct LogHeaderMeta {
     pub count: u8,
 }

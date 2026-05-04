@@ -19,7 +19,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 | 13 | Write cumulative totals back to device | ✅ | ❌ |
 | 14 | Configure sleep screen / watch face (16×59 px bitmap, clock & name position) | ✅ | ❌ |
 | 15 | Write point navigation / waypoints (named GPS waypoints) | ✅ | ❌ |
-| 16 | Delete all activity memory on device | ✅ | ❌ |
+| 16 | Delete all activity memory on device | ✅ | ✅ `delete-tracks` |
 | 17 | List serial ports | — | ✅ `list-ports` |
 
 ## Not yet implemented (priority order)
@@ -28,7 +28,7 @@ Feature gap analysis vs. the original Adobe AIR DataCenter application.
 - [ ] **`set-settings`** — write settings back (timezone, language, units, contrast, auto-pause, auto-lap, user name, …); see `Gps10Decoder.as` `decodeSettings` / `encodeSettings`
 - [x] **`get-totals`** — read cumulative totals from EEPROM offset 304 (20 bytes)
 - [ ] **`set-totals`** — write cumulative totals back to device
-- [ ] **`delete-tracks`** — erase all activity log data from device flash (UPDATE_FLAG_TRIP_DATA_RESET = 4)
+- [x] **`delete-tracks`** — erase all activity log data from device flash (UPDATE_FLAG_TRIP_DATA_RESET = 4)
 - [x] **`agps-date`** — read AGPS last-sync date from device; see `AgpsLoader.as` `decodeAgpsOfflineDataUploadDate`
 - [ ] **`set-waypoints`** — upload up to N named waypoints (EEPROM offset 336, 27 bytes each); see `Gps10Decoder.as` `encodePointNavigation`
 - [ ] **`set-sleep-screen`** — upload custom watch face bitmap (EEPROM offset 96, 172 bytes); see `Gps10Decoder.as` `encodeSleepScreen`

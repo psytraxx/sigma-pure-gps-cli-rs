@@ -51,6 +51,14 @@ Key files:
 - `core/agps/AgpsLoader.as` — AGPS download and validity date decoding
 - `utils/ChecksumUtil.as` — checksum algorithm
 
+## Pull request discipline
+
+Each new feature or fix must be implemented on its own branch and submitted as its own PR. Never bundle multiple features in one PR. Before starting implementation, create a feature branch:
+
+```bash
+git checkout -b feat/my-feature-name
+```
+
 ## After every code change
 
 **Required — do not skip any of these:**
