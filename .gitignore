@@ -4,3 +4,4 @@
 .env
 source/
 docs/protocol.md
+*.db
