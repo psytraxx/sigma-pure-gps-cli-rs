@@ -4,10 +4,8 @@ use tracing::{debug, info, warn};
 
 const MAX_AGPS_BYTES: usize = 32760;
 
-const URL_OFFLINE_1: &str = "https://offline-live1.services.u-blox.com/GetOfflineData.ashx\
-    ?token=UBLOX_TOKEN_REMOVED;gnss=gps;period=2;resolution=1";
-const URL_OFFLINE_2: &str = "https://offline-live2.services.u-blox.com/GetOfflineData.ashx\
-    ?token=UBLOX_TOKEN_REMOVED;gnss=gps;period=2;resolution=1";
+const URL_OFFLINE_1: &str = "https://offline-live1.services.u-blox.com/GetOfflineData.ashx";
+const URL_OFFLINE_2: &str = "https://offline-live2.services.u-blox.com/GetOfflineData.ashx";
 
 pub struct AgpsData {
     pub bytes: Vec<u8>,
@@ -16,11 +14,17 @@ pub struct AgpsData {
 }
 
 pub async fn download(client: &reqwest::Client) -> Result<AgpsData> {
-    let bytes = match try_download(client, URL_OFFLINE_1).await {
+    let token = std::env::var("UBLOX_AGPS_TOKEN")
+        .context("UBLOX_AGPS_TOKEN environment variable not set (add it to .env or export it)")?;
+
+    let url1 = format!("{URL_OFFLINE_1}?token={token};gnss=gps;period=2;resolution=1");
+    let url2 = format!("{URL_OFFLINE_2}?token={token};gnss=gps;period=2;resolution=1");
+
+    let bytes = match try_download(client, &url1).await {
         Ok(b) => b,
         Err(e) => {
             warn!("Primary server failed ({e}), trying fallback");
-            try_download(client, URL_OFFLINE_2)
+            try_download(client, &url2)
                 .await
                 .context("Both u-blox AGPS servers failed")?
         }

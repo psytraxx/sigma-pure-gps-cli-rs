@@ -62,6 +62,8 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
+
     let cli = Cli::parse();
 
     let level = if cli.verbose { "debug" } else { "info" };
