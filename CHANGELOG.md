@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.2.0]
 
 ### Added
 - `delete-tracks` subcommand — permanently erases all activity log data from the device; prompts for confirmation before proceeding; writes `UPDATE_FLAG_TRIP_DATA_RESET` (flag=4) update flags `[0, 6, 1, 8]` to EEPROM offset 80 and uploads the full 1024-byte EEPROM image via `CMD_SEND_EEPROM`
