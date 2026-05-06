@@ -114,6 +114,26 @@ pub fn get_sleep_screen(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
         })
 }
 
+/// Writes a 172-byte encoded sleep screen payload to EEPROM offset 96 and triggers
+/// UPDATE_FLAG_SLEEPSCREEN (flag=8).
+///
+/// Flag bytes derived from generateUpdateFlagData(8) with default state [0,2,0,3]:
+///   byte[0] |= 8 → 8; byte[1] |= 2 → 2; popcount(8)=1 → byte[2]=1;
+///   CRC = (8+2+1+seed_1) & 0xFF = 12.
+///   Result: [0x08, 0x02, 0x01, 0x0C] at EEPROM offset 80.
+/// (See Gps10Handler.as writeUnitSleepScreen / generateUpdateFlagData)
+pub fn set_sleep_screen(port: &mut Box<dyn SerialPort>, payload: &[u8; 172]) -> Result<()> {
+    let eeprom_vec = load_eeprom(port)?;
+    let mut eeprom: [u8; 1024] = eeprom_vec
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
+
+    eeprom[96..96 + 172].copy_from_slice(payload);
+    eeprom[80..84].copy_from_slice(&[0x08, 0x02, 0x01, 0x0C]);
+
+    write_eeprom(port, &eeprom)
+}
+
 /// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).
 /// Command sends len-1=14; response is 15+6 bytes. Date is at payload offsets [10..12].
 pub fn get_agps_flash_header(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {

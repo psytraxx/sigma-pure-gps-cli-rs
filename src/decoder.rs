@@ -453,6 +453,31 @@ pub fn sleep_screen_to_png<W: Write>(screen: &SleepScreen, writer: W) -> Result<
     Ok(())
 }
 
+/// Encodes a `SleepScreen` into the 172-byte payload written to EEPROM offset 96.
+/// Inverse of `decode_sleep_screen`.
+/// CRC covers bytes 0–169 (seed=1), stored at byte 171.
+/// (See Gps10Decoder.encodeSleepScreen in the ActionScript source)
+pub fn encode_sleep_screen(screen: &SleepScreen) -> [u8; 172] {
+    let mut buf = [0u8; 172];
+    if !screen.active {
+        // "no screen" sentinel: all bytes zero except byte 171 = 1
+        buf[171] = 1;
+        return buf;
+    }
+    // id = 1 (LE u32)
+    buf[0] = 1;
+    // bitmap at bytes 4..122
+    buf[4..122].copy_from_slice(screen.bitmap.as_ref());
+    // clock position
+    buf[168] = screen.clock_x;
+    buf[169] = screen.clock_y;
+    // name position
+    buf[170] = u8::from(screen.name_bottom);
+    // CRC over bytes 0..169, seed=1, stored at byte 171
+    buf[171] = buf[..170].iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+    buf
+}
+
 /// Reads a PNG file written by `sleep_screen_to_png` and reconstructs a `SleepScreen`.
 /// The PNG must be 16×59 1-bit grayscale; `tEXt` chunks supply clock position and name pos.
 pub fn sleep_screen_from_png<R: BufRead + Seek>(reader: R) -> Result<SleepScreen> {

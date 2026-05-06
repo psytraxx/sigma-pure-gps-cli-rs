@@ -4,9 +4,12 @@
 
 ### Added
 - `get-sleep-screen` subcommand — reads the 172-byte sleep screen block from EEPROM offset 96, decodes the 16×59 pixel watch face bitmap and metadata (clock position, name position), and saves it as a 1-bit grayscale PNG with `clock_x`, `clock_y`, and `name_pos` `tEXt` metadata chunks; the PNG can be edited in any image editor and later uploaded back to the device
-- `decode_sleep_screen` in `src/decoder.rs` — decodes the 172-byte EEPROM block into a `SleepScreen` struct; verifies the CRC (seed=1, over bytes 0–169, stored at byte 171)
-- `sleep_screen_to_png` / `sleep_screen_from_png` in `src/decoder.rs` — PNG round-trip encode/decode; bit order is reversed per byte (device: LSB-first, PNG: MSB-first)
+- `set-sleep-screen` subcommand — reads a 16×59 1-bit grayscale PNG (produced by `get-sleep-screen` or `scripts/generate_bitmaps.sh`), encodes it into the 172-byte EEPROM payload, and writes it to the device with `UPDATE_FLAG_SLEEPSCREEN=8` (`[0x08, 0x02, 0x01, 0x0C]` at EEPROM offset 80)
+- `encode_sleep_screen` / `decode_sleep_screen` in `src/decoder.rs` — 172-byte EEPROM payload encode/decode; CRC seed=1 over bytes 0–169, stored at byte 171
+- `sleep_screen_to_png` / `sleep_screen_from_png` in `src/decoder.rs` — PNG round-trip with bit-reversal (device: LSB-first → PNG: MSB-first)
 - `png` crate dependency (`0.17`) for 1-bit grayscale PNG with `tEXt` chunk support
+- `bitmaps/bike_and_hills.png` — test bitmap generated from the `bikeAndHills()` preset in `SleepScreenSign.as`
+- `scripts/generate_bitmaps.sh` — uses ImageMagick + Python to render preset dot coordinates into 16×59 1-bit PNGs with embedded metadata
 - `GpxMeta` struct in `src/gpx.rs` — decouples track metadata from `LogHeader`; enables the GPX writer to carry summary stats independent of the data source
 
 ### Changed

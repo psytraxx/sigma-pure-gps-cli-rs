@@ -50,6 +50,12 @@ enum Command {
         #[arg(default_value = "sleep_screen.png")]
         output: String,
     },
+    /// Upload a PNG bitmap as the device sleep screen / watch face
+    SetSleepScreen {
+        /// Input PNG file (16×59 px, 1-bit grayscale, with clock_x/clock_y/name_pos tEXt chunks)
+        #[arg(default_value = "sleep_screen.png")]
+        input: String,
+    },
     /// Show the date of the AGPS data currently on the device
     AgpsDate,
     /// Download recorded tracks from the device, correct elevation via Sigma elevation service
@@ -101,6 +107,9 @@ async fn main() -> Result<()> {
         Command::GetTotals => commands::get_totals::run(cli.port).await,
         Command::GetSleepScreen { output } => {
             commands::get_sleep_screen::run(cli.port, &output).await
+        }
+        Command::SetSleepScreen { input } => {
+            commands::set_sleep_screen::run(cli.port, &input).await
         }
         Command::AgpsDate => commands::agps_date::run(cli.port).await,
         Command::DownloadTracks { output_dir } => {
