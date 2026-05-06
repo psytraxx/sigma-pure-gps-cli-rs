@@ -1,9 +1,66 @@
-mod commands;
-
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serialport::SerialPort;
 use std::time::Duration;
-use tracing::{debug, warn};
+use tracing::debug;
+
+// Command bytes reverse-engineered from Gps10Handler.as (decimal literals converted to hex).
+
+/// Tells the device a transfer is starting (no response expected).
+const CMD_TRANSFER_STARTED: &[u8] = &[0x57, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x60];
+
+/// Prepares the device to receive AGPS flash data; device replies with 8 bytes.
+const CMD_SEND_AGPS: &[u8] = &[
+    0x52, 0x0C, 0x00, 0x00, 0x00, 0xF8, 0x7F, 0x00, 0x00, 0x10, 0x00, 0xE5,
+];
+
+/// Opens the data stream; device replies with 9 bytes.
+const CMD_SEND_START: &[u8] = &[0x53, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5B];
+
+/// Closes the data stream; device replies with 9 bytes.
+const CMD_SEND_END: &[u8] = &[0xAB, 0x08, 0x00, 0x00, 0x00, 0x01, 0x02, 0xB6];
+
+/// Confirms a successful transfer (no response expected).
+const CMD_TRANSFER_SUCCESS: &[u8] = &[0x57, 0x08, 0x00, 0x00, 0x00, 0x02, 0x01, 0x62];
+
+/// Reads the full 1024-byte EEPROM; device replies with 1030 bytes (5 header + 1024 + checksum).
+const CMD_GET_COMPLETE_EEPROM: &[u8] = &[
+    0x56, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x03, 0x00, 0x64,
+];
+
+/// Requests device identification; device replies with 76 bytes.
+const CMD_LOAD_UNIT_INFO: &[u8] = &[
+    0x56, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x00, 0x00, 0xA7,
+];
+
+/// Requests the number of stored log headers; device replies with 8 bytes (`reply[5]` = count).
+const CMD_GET_LOG_HEADER_COUNT: &[u8] = &[
+    0x54, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60,
+];
+
+/// Writes the full 1024-byte EEPROM back to the device; device replies with 8 bytes.
+const CMD_SEND_EEPROM: &[u8] = &[
+    0x52, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x62,
+];
+
+/// Builds a flash-read command for the given start address and length.
+fn build_flash_read_cmd(start: u32, len: u32) -> Vec<u8> {
+    let mut cmd = vec![
+        0x56,
+        0x0C,
+        0x00,
+        0x00,
+        0x00,
+        (start & 0xFF) as u8,
+        (start >> 8 & 0xFF) as u8,
+        (start >> 16 & 0xFF) as u8,
+        (len & 0xFF) as u8,
+        (len >> 8 & 0xFF) as u8,
+        (len >> 16 & 0xFF) as u8,
+    ];
+    let checksum: u8 = cmd.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+    cmd.push(checksum);
+    cmd
+}
 
 const CHUNK_SIZE: usize = 64;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -19,49 +76,17 @@ pub fn open_port(port_name: &str) -> Result<Box<dyn SerialPort>> {
 
 /// Returns the raw 76-byte unit info response.
 pub fn load_unit_info(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
-    send(port, commands::CMD_LOAD_UNIT_INFO)?;
+    send(port, CMD_LOAD_UNIT_INFO)?;
     recv(port, 76)
 }
 
 /// Reads and discards the full EEPROM. The original app always does this before writing AGPS
 /// data — the device will not respond to CMD_SEND_AGPS without the prior EEPROM read.
 pub fn load_eeprom(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
-    send(port, commands::CMD_GET_COMPLETE_EEPROM)?;
+    send(port, CMD_GET_COMPLETE_EEPROM)?;
     let raw = recv(port, 1030)?;
     // Strip 5-byte header and trailing checksum; payload is 1024 bytes
     Ok(raw[5..5 + 1024].to_vec())
-}
-
-pub fn print_unit_info(raw: &[u8]) {
-    if raw.len() < 76 {
-        println!("Unit info response too short ({} bytes)", raw.len());
-        return;
-    }
-    // Strip 5-byte header and trailing checksum; serial = payload[0..6], firmware = payload[64..70]
-    let serial_bytes = &raw[5..11];
-    let firmware_bytes = &raw[69..75];
-
-    // Serial number: 6-byte little-endian integer
-    let serial: u64 = serial_bytes
-        .iter()
-        .enumerate()
-        .fold(0u64, |acc, (i, &b)| acc + (b as u64) * (1u64 << (i * 8)));
-
-    // Firmware version is stored as a BCD byte: the hex representation is read as decimal.
-    // e.g. byte 0x32 -> hex string "32" -> parsed as decimal 32 -> displayed as "3.2"
-    let fw_raw = format!("{:02X}", firmware_bytes[1]);
-    let fw_val: u32 = fw_raw.parse().unwrap_or_else(|_| {
-        warn!(
-            "Unexpected firmware byte value {:#04x} (hex \"{fw_raw}\" is not valid BCD); \
-             displaying as 0.0",
-            firmware_bytes[1]
-        );
-        0
-    });
-    let firmware = format!("{}.{}", fw_val / 10, fw_val % 10);
-
-    println!("Serial number:    {serial}");
-    println!("Firmware version: {firmware}");
 }
 
 /// Returns the 32-byte settings block from EEPROM offset 272.
@@ -138,7 +163,7 @@ pub fn set_sleep_screen(port: &mut Box<dyn SerialPort>, payload: &[u8; 172]) -> 
 /// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).
 /// Command sends len-1=14; response is 15+6 bytes. Date is at payload offsets [10..12].
 pub fn get_agps_flash_header(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
-    let cmd = commands::build_flash_read_cmd(0x1000, 14);
+    let cmd = build_flash_read_cmd(0x1000, 14);
     send(port, &cmd)?;
     let raw = recv(port, 5 + 15 + 1)?;
     verify_checksum_seed0(&raw)?;
@@ -147,8 +172,8 @@ pub fn get_agps_flash_header(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> 
 
 pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     // Step 1: notify start (fire-and-forget) + CMD_SEND_AGPS
-    send(port, commands::CMD_TRANSFER_STARTED)?;
-    send(port, commands::CMD_SEND_AGPS)?;
+    send(port, CMD_TRANSFER_STARTED)?;
+    send(port, CMD_SEND_AGPS)?;
     let reply = recv(port, 8)?;
     if reply.len() < 7 {
         bail!("CMD_SEND_AGPS response too short: {} bytes", reply.len());
@@ -156,7 +181,7 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     debug!("CMD_SEND_AGPS reply: {:02X?}", reply);
 
     // Step 2: open stream
-    send(port, commands::CMD_SEND_START)?;
+    send(port, CMD_SEND_START)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_START reply: {:02X?}", reply);
     std::thread::sleep(CHUNK_DELAY);
@@ -168,13 +193,13 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     }
 
     // Close stream
-    send(port, commands::CMD_SEND_END)?;
+    send(port, CMD_SEND_END)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_END reply: {:02X?}", reply);
     std::thread::sleep(CHUNK_DELAY);
 
     // Step 4: confirm success
-    send(port, commands::CMD_TRANSFER_SUCCESS)?;
+    send(port, CMD_TRANSFER_SUCCESS)?;
     Ok(())
 }
 
@@ -184,12 +209,12 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
 /// CMD_SEND_START (recv 9) → 1024 bytes in 64-byte chunks → CMD_SEND_END (recv 9) →
 /// CMD_TRANSFER_SUCCESS.
 pub fn write_eeprom(port: &mut Box<dyn SerialPort>, eeprom: &[u8; 1024]) -> Result<()> {
-    send(port, commands::CMD_TRANSFER_STARTED)?;
-    send(port, commands::CMD_SEND_EEPROM)?;
+    send(port, CMD_TRANSFER_STARTED)?;
+    send(port, CMD_SEND_EEPROM)?;
     let reply = recv(port, 8)?;
     debug!("CMD_SEND_EEPROM reply: {:02X?}", reply);
 
-    send(port, commands::CMD_SEND_START)?;
+    send(port, CMD_SEND_START)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_START reply: {:02X?}", reply);
     std::thread::sleep(CHUNK_DELAY);
@@ -199,12 +224,12 @@ pub fn write_eeprom(port: &mut Box<dyn SerialPort>, eeprom: &[u8; 1024]) -> Resu
         std::thread::sleep(CHUNK_DELAY);
     }
 
-    send(port, commands::CMD_SEND_END)?;
+    send(port, CMD_SEND_END)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_END reply: {:02X?}", reply);
     std::thread::sleep(CHUNK_DELAY);
 
-    send(port, commands::CMD_TRANSFER_SUCCESS)?;
+    send(port, CMD_TRANSFER_SUCCESS)?;
     Ok(())
 }
 
@@ -274,7 +299,7 @@ pub struct LogHeaderMeta {
 
 /// Returns the number of stored log headers.
 pub fn get_log_header_count(port: &mut Box<dyn SerialPort>) -> Result<LogHeaderMeta> {
-    send(port, commands::CMD_GET_LOG_HEADER_COUNT)?;
+    send(port, CMD_GET_LOG_HEADER_COUNT)?;
     let reply = recv(port, 8)?;
     debug!("log header count reply: {:02X?}", reply);
     let count = reply[5];
@@ -288,7 +313,7 @@ pub fn get_log_headers(port: &mut Box<dyn SerialPort>, count: u8) -> Result<Vec<
     let len = n * 65;
     let start = 0x1F_DFFFu32 - len + 1;
     // AS3 sends len-1 as the command length but reads len+6 bytes back
-    let cmd = commands::build_flash_read_cmd(start, len - 1);
+    let cmd = build_flash_read_cmd(start, len - 1);
     send(port, &cmd)?;
     let total = (len + 6) as usize;
     let raw = recv(port, total)?;
@@ -303,7 +328,7 @@ pub fn get_log_data(
     stop_addr: u32,
 ) -> Result<Vec<u8>> {
     let len = stop_addr - start_addr + 1;
-    let cmd = commands::build_flash_read_cmd(start_addr, len);
+    let cmd = build_flash_read_cmd(start_addr, len);
     send(port, &cmd)?;
     // Response: 5-byte header + len bytes + checksum + extra byte
     let total = (len + 7) as usize;

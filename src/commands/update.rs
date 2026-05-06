@@ -4,7 +4,7 @@ use tracing::info;
 pub async fn run(port_arg: Option<String>) -> Result<()> {
     let client = crate::util::build_http_client()?;
     info!("Downloading AGPS data from u-blox...");
-    let agps = crate::downloader::download(&client).await?;
+    let agps = crate::util::download_agps(&client).await?;
     info!("Downloaded {} bytes", agps.bytes.len());
 
     let port_name = crate::util::resolve_port(port_arg)?;

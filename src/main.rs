@@ -1,7 +1,5 @@
 mod commands;
 mod decoder;
-mod device;
-mod downloader;
 mod elevation;
 mod gpx;
 mod protocol;
