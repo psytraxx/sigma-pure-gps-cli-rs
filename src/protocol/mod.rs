@@ -96,6 +96,24 @@ pub fn get_totals(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
         })
 }
 
+/// Returns the 172-byte sleep screen block from EEPROM offset 96.
+/// Contains a 118-byte 16×59 pixel bitmap, clock position, name position, and CRC.
+/// (See Gps10Decoder.encodeSleepScreen / POSITION_SLEEPSCREEN in the ActionScript source)
+pub fn get_sleep_screen(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    const SLEEPSCREEN_OFFSET: usize = 96;
+    const SLEEPSCREEN_SIZE: usize = 172;
+    let eeprom = load_eeprom(port)?;
+    eeprom
+        .get(SLEEPSCREEN_OFFSET..SLEEPSCREEN_OFFSET + SLEEPSCREEN_SIZE)
+        .map(|s| s.to_vec())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "EEPROM too short for sleep screen block ({} bytes)",
+                eeprom.len()
+            )
+        })
+}
+
 /// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).
 /// Command sends len-1=14; response is 15+6 bytes. Date is at payload offsets [10..12].
 pub fn get_agps_flash_header(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {

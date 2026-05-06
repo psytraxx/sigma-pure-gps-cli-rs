@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use std::io::{BufRead, Seek, Write};
 
 /// Decodes the AGPS sync date from 13 bytes read at flash offset 0x1000.
 /// Bytes [10]=year-2000, [11]=month (1-based), [12]=day (ported from AgpsLoader.decodeAgpsOfflineDataUploadDate).
@@ -374,6 +375,140 @@ fn decode_coord(degree: u8, m0: u8, m1: u8, m2: u8, positive: bool) -> f64 {
     let minutes = (((m2 as u32 & 0x0F) << 16) | ((m1 as u32) << 8) | m0 as u32) as f64 / 10000.0;
     let decimal = degree as f64 + minutes / 60.0;
     if positive { decimal } else { -decimal }
+}
+
+/// Raw 16×59 pixel bitmap + metadata decoded from the 172-byte sleep screen EEPROM block.
+/// Bitmap encoding: row-major, LSB-first; 2 bytes per row × 59 rows = 118 bytes.
+/// (See Gps10Decoder.encodeSleepScreen / SleepScreenSign.getBytes in the ActionScript source)
+pub struct SleepScreen {
+    /// `false` means no sleep screen is configured on the device.
+    pub active: bool,
+    /// X pixel position of the clock on the watch face.
+    pub clock_x: u8,
+    /// Y pixel position of the clock on the watch face.
+    pub clock_y: u8,
+    /// `true` = user name shown at the bottom of the screen; `false` = at the top.
+    pub name_bottom: bool,
+    /// Raw 118-byte bit-packed bitmap (16 columns × 59 rows, 2 bytes/row, LSB-first).
+    pub bitmap: Box<[u8; 118]>,
+}
+
+/// Decodes a 172-byte sleep screen block from EEPROM offset 96.
+/// CRC covers bytes 0–169 (seed=1); stored at byte 171. Byte 170 is myNamePos.
+/// (See Gps10Decoder.encodeSleepScreen in the ActionScript source)
+pub fn decode_sleep_screen(data: &[u8]) -> Result<SleepScreen> {
+    if data.len() < 172 {
+        bail!("Sleep screen data too short: {} bytes", data.len());
+    }
+
+    let id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let active = id != 0;
+
+    if active {
+        // CRC covers bytes 0..169 (170 bytes, slice(0,170) in AS3), stored at byte 171
+        let computed: u8 = data[..170].iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+        if computed != data[171] {
+            bail!(
+                "Sleep screen checksum mismatch: computed {computed:#04x}, stored {:#04x}",
+                data[171]
+            );
+        }
+    }
+
+    let bitmap: Box<[u8; 118]> = Box::new(
+        data[4..122]
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("bitmap slice length mismatch"))?,
+    );
+
+    Ok(SleepScreen {
+        active,
+        clock_x: data[168],
+        clock_y: data[169],
+        name_bottom: data[170] == 1,
+        bitmap,
+    })
+}
+
+/// Writes a `SleepScreen` as a 16×59 1-bit grayscale PNG.
+/// Three `tEXt` chunks carry the metadata needed to round-trip back to the device:
+///   `clock_x`, `clock_y` (pixel positions), `name_pos` ("top" or "bottom").
+///
+/// Bit ordering: device stores pixels LSB-first (bit 0 = leftmost); PNG 1-bit stores
+/// them MSB-first (bit 7 = leftmost). `reverse_bits()` converts between the two.
+pub fn sleep_screen_to_png<W: Write>(screen: &SleepScreen, writer: W) -> Result<()> {
+    let mut encoder = png::Encoder::new(writer, 16, 59);
+    encoder.set_color(png::ColorType::Grayscale);
+    encoder.set_depth(png::BitDepth::One);
+    encoder.add_text_chunk("clock_x".to_string(), screen.clock_x.to_string())?;
+    encoder.add_text_chunk("clock_y".to_string(), screen.clock_y.to_string())?;
+    encoder.add_text_chunk(
+        "name_pos".to_string(),
+        if screen.name_bottom { "bottom" } else { "top" }.to_string(),
+    )?;
+    let mut png_writer = encoder.write_header()?;
+    // Reverse bits in each byte so leftmost pixel maps to bit 7 (PNG MSB-first convention)
+    let png_rows: Vec<u8> = screen.bitmap.iter().map(|b| b.reverse_bits()).collect();
+    png_writer.write_image_data(&png_rows)?;
+    Ok(())
+}
+
+/// Reads a PNG file written by `sleep_screen_to_png` and reconstructs a `SleepScreen`.
+/// The PNG must be 16×59 1-bit grayscale; `tEXt` chunks supply clock position and name pos.
+pub fn sleep_screen_from_png<R: BufRead + Seek>(reader: R) -> Result<SleepScreen> {
+    let decoder = png::Decoder::new(reader);
+    let mut png_reader = decoder.read_info()?;
+
+    // Extract tEXt metadata before consuming the pixel data
+    let mut clock_x: u8 = 0;
+    let mut clock_y: u8 = 0;
+    let mut name_bottom = false;
+    for chunk in &png_reader.info().uncompressed_latin1_text {
+        match chunk.keyword.as_str() {
+            "clock_x" => clock_x = chunk.text.trim().parse().unwrap_or(0),
+            "clock_y" => clock_y = chunk.text.trim().parse().unwrap_or(0),
+            "name_pos" => name_bottom = chunk.text.trim() == "bottom",
+            _ => {}
+        }
+    }
+
+    let info = png_reader.info();
+    if info.width != 16 || info.height != 59 {
+        bail!(
+            "PNG dimensions must be 16×59, got {}×{}",
+            info.width,
+            info.height
+        );
+    }
+
+    let buf_size = png_reader
+        .output_buffer_size()
+        .ok_or_else(|| anyhow!("could not determine PNG output buffer size"))?;
+    let mut buf = vec![0u8; buf_size];
+    let frame_info = png_reader.next_frame(&mut buf)?;
+
+    if frame_info.buffer_size() < 118 {
+        bail!(
+            "PNG pixel data too short: {} bytes",
+            frame_info.buffer_size()
+        );
+    }
+
+    // Reverse bits: PNG MSB-first → device LSB-first
+    let bitmap: [u8; 118] = buf[..118]
+        .iter()
+        .map(|b| b.reverse_bits())
+        .collect::<Vec<u8>>()
+        .try_into()
+        .map_err(|_| anyhow!("bitmap conversion failed"))?;
+
+    Ok(SleepScreen {
+        active: true,
+        clock_x,
+        clock_y,
+        name_bottom,
+        bitmap: Box::new(bitmap),
+    })
 }
 
 fn verify_checksum(data: &[u8], seed: u8) -> Result<()> {

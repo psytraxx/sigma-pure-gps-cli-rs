@@ -67,6 +67,7 @@ Commands:
   info                Query device serial number and firmware version
   get-settings        Read device settings (timezone, language, units, contrast, …)
   get-totals          Read cumulative totals (distance, time, calories, climb)
+  get-sleep-screen    Read the sleep screen / watch face bitmap from the device and save as PNG
   agps-date           Show the AGPS data date currently stored on the device
   set-home-altitude   Set home altitude 1 and/or 2 on the device (in metres)
   delete-tracks       Permanently erase all activity data from the device
@@ -108,6 +109,15 @@ sigma-pure-gps-cli info
 sigma-pure-gps-cli get-settings
 sigma-pure-gps-cli get-totals
 sigma-pure-gps-cli agps-date
+```
+
+### Download sleep screen / watch face
+
+Reads the watch face bitmap from the device and saves it as a 16×59 PNG. The PNG includes `clock_x`, `clock_y`, and `name_pos` metadata so it can be edited and uploaded back later.
+
+```bash
+sigma-pure-gps-cli get-sleep-screen
+sigma-pure-gps-cli get-sleep-screen my_face.png
 ```
 
 ### Set home altitude
