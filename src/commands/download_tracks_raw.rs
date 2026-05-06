@@ -19,9 +19,10 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
     std::fs::create_dir_all(&output_dir)?;
 
     for track in tracks {
-        let filename = crate::gpx::track_filename(&track.header, track.index);
+        let meta = crate::gpx::GpxMeta::from(&track.header);
+        let filename = crate::gpx::track_filename(&meta, track.index);
         let path = std::path::Path::new(&output_dir).join(&filename);
-        crate::gpx::write_gpx(&path, &track.header, &track.points)?;
+        crate::gpx::write_gpx(&path, &meta, &track.points)?;
         info!("  Saved to {}", path.display());
     }
 

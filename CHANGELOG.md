@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `GpxMeta` struct in `src/gpx.rs` — decouples track metadata from `LogHeader`; enables the GPX writer to carry summary stats independent of the data source
+
+### Changed
+- GPX output now includes a `<desc>` element on each track with summary stats: distance, duration, average speed, max speed, and calories
+- GPX writer switched from manual string building to `quick-xml` for correct XML escaping of all text content
+- `write_gpx` and `track_filename` now accept `&GpxMeta` instead of `&LogHeader`
+- GPX creator tag corrected from `sigma-pure-gps-updater` to `sigma-pure-gps-cli`
+
 ## [0.2.0]
 
 ### Added

@@ -93,7 +93,7 @@ sigma-pure-gps-cli download-tracks ./tracks
 sigma-pure-gps-cli download-tracks-raw ./tracks
 ```
 
-Each track is saved as `track_NNN.gpx` with elevation, speed, and temperature extensions.
+Each track is saved as `track_NNN_YYYYMMDD_HHMMSS.gpx` with a `<desc>` summary (distance, duration, avg/max speed, calories) and per-point elevation, speed, and temperature extensions.
 
 ### Download AGPS data to file
 
