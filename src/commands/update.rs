@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
-use tracing::{error, info};
+use anyhow::Result;
+use tracing::info;
 
 pub async fn run(port_arg: Option<String>) -> Result<()> {
     let client = crate::util::build_http_client()?;
@@ -10,17 +10,8 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
     let port_name = crate::util::resolve_port(port_arg)?;
     info!("Using port: {port_name}");
 
-    let result = tokio::task::spawn_blocking(move || upload(port_name, agps.bytes))
-        .await
-        .context("Upload task panicked")?;
-
-    match result {
-        Ok(()) => info!("AGPS update complete."),
-        Err(e) => {
-            error!("Upload failed: {e:#}");
-            std::process::exit(1);
-        }
-    }
+    crate::util::run_blocking(move || upload(port_name, agps.bytes)).await?;
+    info!("AGPS update complete.");
     Ok(())
 }
 

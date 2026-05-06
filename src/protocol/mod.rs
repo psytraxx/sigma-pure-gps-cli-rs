@@ -3,7 +3,7 @@ mod commands;
 use anyhow::{Context, Result, bail};
 use serialport::SerialPort;
 use std::time::Duration;
-use tracing::debug;
+use tracing::{debug, warn};
 
 const CHUNK_SIZE: usize = 64;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -46,10 +46,17 @@ pub fn print_unit_info(raw: &[u8]) {
         .enumerate()
         .fold(0u64, |acc, (i, &b)| acc + (b as u64) * (1u64 << (i * 8)));
 
-    // Firmware: byte[1] treated as BCD-style decimal (toString(16) parsed as base-10)
-    // e.g. 0x32 -> "32" -> 32 -> "3.2"
+    // Firmware version is stored as a BCD byte: the hex representation is read as decimal.
+    // e.g. byte 0x32 -> hex string "32" -> parsed as decimal 32 -> displayed as "3.2"
     let fw_raw = format!("{:02X}", firmware_bytes[1]);
-    let fw_val: u32 = fw_raw.parse().unwrap_or(0);
+    let fw_val: u32 = fw_raw.parse().unwrap_or_else(|_| {
+        warn!(
+            "Unexpected firmware byte value {:#04x} (hex \"{fw_raw}\" is not valid BCD); \
+             displaying as 0.0",
+            firmware_bytes[1]
+        );
+        0
+    });
     let firmware = format!("{}.{}", fw_val / 10, fw_val % 10);
 
     println!("Serial number:    {serial}");
@@ -57,15 +64,36 @@ pub fn print_unit_info(raw: &[u8]) {
 }
 
 /// Returns the 32-byte settings block from EEPROM offset 272.
+/// Covers timezone, language, units, contrast, altitude references.
+/// (See Gps10Decoder.decodeSettings in the ActionScript source)
 pub fn get_settings(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    const SETTINGS_OFFSET: usize = 272;
+    const SETTINGS_SIZE: usize = 32;
     let eeprom = load_eeprom(port)?;
-    Ok(eeprom[272..272 + 32].to_vec())
+    eeprom
+        .get(SETTINGS_OFFSET..SETTINGS_OFFSET + SETTINGS_SIZE)
+        .map(|s| s.to_vec())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "EEPROM too short for settings block ({} bytes)",
+                eeprom.len()
+            )
+        })
 }
 
 /// Returns the 20-byte totals block from EEPROM offset 304.
+/// Covers cumulative distance, time, calories, elevation gain, and reset date.
+/// (See Gps10Decoder.decodeTotals in the ActionScript source)
 pub fn get_totals(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    const TOTALS_OFFSET: usize = 304;
+    const TOTALS_SIZE: usize = 20;
     let eeprom = load_eeprom(port)?;
-    Ok(eeprom[304..304 + 20].to_vec())
+    eeprom
+        .get(TOTALS_OFFSET..TOTALS_OFFSET + TOTALS_SIZE)
+        .map(|s| s.to_vec())
+        .ok_or_else(|| {
+            anyhow::anyhow!("EEPROM too short for totals block ({} bytes)", eeprom.len())
+        })
 }
 
 /// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).

@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 
 /// Decodes the AGPS sync date from 13 bytes read at flash offset 0x1000.
@@ -11,7 +11,7 @@ pub fn decode_agps_date(data: &[u8]) -> Result<NaiveDate> {
     let month = data[11] as u32;
     let day = data[12] as u32;
     NaiveDate::from_ymd_opt(year, month, day)
-        .ok_or_else(|| anyhow::anyhow!("Invalid AGPS date: {year}-{month:02}-{day:02}"))
+        .ok_or_else(|| anyhow!("Invalid AGPS date: {year}-{month:02}-{day:02}"))
 }
 
 pub struct Settings {
@@ -288,9 +288,14 @@ pub fn decode_log_data(data: &[u8]) -> Vec<TrackPoint> {
     let mut points = Vec::new();
     let mut pos = 0;
     let mut elapsed_ms: u64 = 0;
+    // The device samples one GPS point every 5 seconds during normal recording.
     const SAMPLE_MS: u64 = 5_000;
 
     while pos < data.len() {
+        // Least-significant bit of the first byte indicates entry type:
+        //   0 = normal GPS track point (25 bytes)
+        //   1 = pause/stop marker    (32 bytes — 7 extra bytes carry pause metadata)
+        // (See Gps10Decoder.as, decodeLogData)
         let entry_type = data[pos] & 0x01;
         let entry_size = if entry_type == 0 { 25 } else { 32 };
 
@@ -304,12 +309,14 @@ pub fn decode_log_data(data: &[u8]) -> Vec<TrackPoint> {
         }
 
         if entry_type == 0 {
-            // Normal log entry (25 bytes)
+            // Normal GPS point — advance elapsed time by one sample interval.
             let pt = decode_log_entry(entry, elapsed_ms, false);
             elapsed_ms += SAMPLE_MS;
             points.push(pt);
         } else {
-            // Pause entry (32 bytes)
+            // Pause marker — byte 18 holds the pause duration in 100 ms units.
+            // Advance elapsed time by the actual pause length so subsequent
+            // track points carry correct timestamps.
             let training_time_units = entry[18] as u64;
             let pt = decode_log_entry(entry, elapsed_ms, true);
             elapsed_ms += training_time_units * 100;
@@ -347,10 +354,23 @@ fn decode_log_entry(e: &[u8], elapsed_ms: u64, is_pause: bool) -> TrackPoint {
     }
 }
 
-/// Decodes the DdMmmmmm coordinate format.
-/// `m2` supplies the upper 4 bits of the 20-bit minutes field (lower nibble).
+/// Decodes a GPS coordinate stored in the device's proprietary DdMmmmmm format.
+///
+/// The coordinate is split across four bytes:
+/// - `degree`: integer degrees (0–180)
+/// - `m0`, `m1`, `m2`: a 20-bit little-endian minutes value, where only the
+///   lower nibble of `m2` is used (bits 19:16)
+///
+/// Minutes are stored multiplied by 10 000, so divide by 10 000.0 to get
+/// decimal minutes, then convert: decimal_degrees = degrees + minutes / 60.
+///
+/// Example: 47°04'30" → degrees=47, minutes=4.5, stored=45000
+///   m0=0x28 m1=0xAF m2=0x00 → (0<<16)|(0xAF<<8)|0x28 = 45 000 → 45000/10000=4.5 → 47+4.5/60≈47.075
+///
 /// `positive` is true for North (latitude) or East (longitude).
+/// (See Gps10Decoder.as, decodeCoordinates)
 fn decode_coord(degree: u8, m0: u8, m1: u8, m2: u8, positive: bool) -> f64 {
+    // Reconstruct the 20-bit minutes value from the three bytes.
     let minutes = (((m2 as u32 & 0x0F) << 16) | ((m1 as u32) << 8) | m0 as u32) as f64 / 10000.0;
     let decimal = degree as f64 + minutes / 60.0;
     if positive { decimal } else { -decimal }

@@ -5,7 +5,7 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
     let port_name = crate::util::resolve_port(port_arg)?;
     info!("Using port: {port_name}");
 
-    tokio::task::spawn_blocking(move || {
+    crate::util::run_blocking(move || {
         let mut port = crate::protocol::open_port(&port_name)?;
         crate::protocol::load_unit_info(&mut port)?;
         let raw = crate::protocol::get_settings(&mut port)?;
@@ -47,8 +47,7 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
 
         Ok::<_, anyhow::Error>(())
     })
-    .await
-    .unwrap_or_else(|e| Err(anyhow::anyhow!("Task panicked: {e}")))?;
+    .await?;
 
     Ok(())
 }
