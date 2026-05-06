@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use std::io::{BufRead, Seek, Write};
 
@@ -374,11 +374,7 @@ fn decode_coord(degree: u8, m0: u8, m1: u8, m2: u8, positive: bool) -> f64 {
     // Reconstruct the 20-bit minutes value from the three bytes.
     let minutes = (((m2 as u32 & 0x0F) << 16) | ((m1 as u32) << 8) | m0 as u32) as f64 / 10000.0;
     let decimal = degree as f64 + minutes / 60.0;
-    if positive {
-        decimal
-    } else {
-        -decimal
-    }
+    if positive { decimal } else { -decimal }
 }
 
 /// Raw 16×59 pixel bitmap + metadata decoded from the 172-byte sleep screen EEPROM block.
@@ -699,11 +695,11 @@ mod tests {
         let mut d = [0u8; 31];
         // byte 0: timeZone=16 (GMT+01:00), summerTime=1, clockMode=24h
         d[0] = 16 | (1 << 6); // tz=16, summer=1, clock=0→24h
-                              // byte 1: language=1(de), autoPause=0, speed=0(km/h), altRef=0(actual), contrast=2→stored as 1
+        // byte 1: language=1(de), autoPause=0, speed=0(km/h), altRef=0(actual), contrast=2→stored as 1
         d[1] = 1 | (1 << 6); // language=de, contrast=2 (bits 7:6 = 01)
-                             // byte 2: dateFormat=eu, temp=celsius, alt=meter, nfc=1, systemTone=0; also bits 7:5 = 101
+        // byte 2: dateFormat=eu, temp=celsius, alt=meter, nfc=1, systemTone=0; also bits 7:5 = 101
         d[2] = (1 << 3) | 0xA0; // nfc=1, plus 0xA0 from encodeSettings constant
-                                // actualAltitude: raw = 442*10 + 10000 = 14420 = 0x3854
+        // actualAltitude: raw = 442*10 + 10000 = 14420 = 0x3854
         d[3] = 0x54;
         d[4] = 0x38;
         // seaLevel: raw = (1013.25 - 900) * 10 = 1132 ≈ 1132 = 0x046C (masked to 11 bits)
@@ -777,7 +773,7 @@ mod tests {
         h[11] = 10; // hour
         h[12] = 7; // minute
         h[13] = 49; // second
-                    // training time: 3600 s = 36000 * 100ms units → stored as 36000 = 0x8CA0
+        // training time: 3600 s = 36000 * 100ms units → stored as 36000 = 0x8CA0
         h[16] = 0xA0;
         h[17] = 0x8C;
         // max speed: 3600 cm/s = 36.00 km/h → stored as 3600

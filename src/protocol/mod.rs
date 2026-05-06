@@ -8,6 +8,7 @@ use tracing::{debug, warn};
 const CHUNK_SIZE: usize = 64;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const BAUD_RATE: u32 = 115_200;
+const CHUNK_DELAY: Duration = Duration::from_millis(50);
 
 pub fn open_port(port_name: &str) -> Result<Box<dyn SerialPort>> {
     serialport::new(port_name, BAUD_RATE)
@@ -158,19 +159,19 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
     send(port, commands::CMD_SEND_START)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_START reply: {:02X?}", reply);
-    std::thread::sleep(Duration::from_millis(50));
+    std::thread::sleep(CHUNK_DELAY);
 
     // Step 3: send data in 64-byte chunks, 50 ms apart
     for chunk in data.chunks(CHUNK_SIZE) {
         send(port, chunk)?;
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(CHUNK_DELAY);
     }
 
     // Close stream
     send(port, commands::CMD_SEND_END)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_END reply: {:02X?}", reply);
-    std::thread::sleep(Duration::from_millis(50));
+    std::thread::sleep(CHUNK_DELAY);
 
     // Step 4: confirm success
     send(port, commands::CMD_TRANSFER_SUCCESS)?;
@@ -191,17 +192,17 @@ pub fn write_eeprom(port: &mut Box<dyn SerialPort>, eeprom: &[u8; 1024]) -> Resu
     send(port, commands::CMD_SEND_START)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_START reply: {:02X?}", reply);
-    std::thread::sleep(Duration::from_millis(50));
+    std::thread::sleep(CHUNK_DELAY);
 
     for chunk in eeprom.chunks(CHUNK_SIZE) {
         send(port, chunk)?;
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(CHUNK_DELAY);
     }
 
     send(port, commands::CMD_SEND_END)?;
     let reply = recv(port, 9)?;
     debug!("CMD_SEND_END reply: {:02X?}", reply);
-    std::thread::sleep(Duration::from_millis(50));
+    std::thread::sleep(CHUNK_DELAY);
 
     send(port, commands::CMD_TRANSFER_SUCCESS)?;
     Ok(())
@@ -332,4 +333,412 @@ fn verify_checksum_seed0(data: &[u8]) -> Result<()> {
         anyhow::bail!("Response checksum mismatch: computed {computed:#04x}, got {expected:#04x}");
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serialport::{ClearBuffer, DataBits, FlowControl, Parity, StopBits};
+    use std::collections::VecDeque;
+    use std::io::{self, Read, Write};
+    use std::sync::{Arc, Mutex};
+
+    // ── MockPort ─────────────────────────────────────────────────────────────
+
+    struct MockPort {
+        responses: Arc<Mutex<VecDeque<u8>>>,
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl MockPort {
+        fn new(responses: &[u8]) -> (Self, Arc<Mutex<Vec<u8>>>) {
+            let written = Arc::new(Mutex::new(Vec::new()));
+            let port = Self {
+                responses: Arc::new(Mutex::new(VecDeque::from(responses.to_vec()))),
+                written: Arc::clone(&written),
+            };
+            (port, written)
+        }
+
+        fn into_box(self) -> Box<dyn serialport::SerialPort> {
+            Box::new(self)
+        }
+    }
+
+    impl Read for MockPort {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let mut q = self.responses.lock().unwrap();
+            let n = buf.len().min(q.len());
+            for (dst, src) in buf[..n].iter_mut().zip(q.drain(..n)) {
+                *dst = src;
+            }
+            Ok(n)
+        }
+    }
+
+    impl Write for MockPort {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.written.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl serialport::SerialPort for MockPort {
+        fn name(&self) -> Option<String> {
+            None
+        }
+        fn baud_rate(&self) -> serialport::Result<u32> {
+            Ok(115_200)
+        }
+        fn data_bits(&self) -> serialport::Result<DataBits> {
+            Ok(DataBits::Eight)
+        }
+        fn flow_control(&self) -> serialport::Result<FlowControl> {
+            Ok(FlowControl::None)
+        }
+        fn parity(&self) -> serialport::Result<Parity> {
+            Ok(Parity::None)
+        }
+        fn stop_bits(&self) -> serialport::Result<StopBits> {
+            Ok(StopBits::One)
+        }
+        fn timeout(&self) -> Duration {
+            Duration::from_secs(5)
+        }
+        fn set_baud_rate(&mut self, _: u32) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_data_bits(&mut self, _: DataBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_flow_control(&mut self, _: FlowControl) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_parity(&mut self, _: Parity) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_stop_bits(&mut self, _: StopBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_timeout(&mut self, _: Duration) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_request_to_send(&mut self, _: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_data_terminal_ready(&mut self, _: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn read_clear_to_send(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_data_set_ready(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_ring_indicator(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_carrier_detect(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn bytes_to_write(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn bytes_to_read(&self) -> serialport::Result<u32> {
+            Ok(self.responses.lock().unwrap().len() as u32)
+        }
+        fn try_clone(&self) -> serialport::Result<Box<dyn serialport::SerialPort>> {
+            Err(serialport::Error::new(
+                serialport::ErrorKind::Unknown,
+                "mock does not support clone",
+            ))
+        }
+        fn clear(&self, _: ClearBuffer) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn clear_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// 1030-byte fake EEPROM response: 5-byte header + 1024 EEPROM bytes + 1 ignored byte.
+    fn eeprom_response(eeprom: &[u8; 1024]) -> Vec<u8> {
+        let mut v = vec![0u8; 5];
+        v.extend_from_slice(eeprom);
+        v.push(0);
+        v
+    }
+
+    /// The three reply blobs the device sends back during a write_eeprom sequence.
+    fn write_eeprom_replies() -> Vec<u8> {
+        let mut v = vec![0u8; 8]; // CMD_SEND_EEPROM reply
+        v.extend_from_slice(&[0u8; 9]); // CMD_SEND_START reply
+        v.extend_from_slice(&[0u8; 9]); // CMD_SEND_END reply
+        v
+    }
+
+    /// Appends a seed-0 checksum byte and returns the full frame.
+    fn with_seed0_checksum(data: &[u8]) -> Vec<u8> {
+        let crc = data.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+        let mut v = data.to_vec();
+        v.push(crc);
+        v
+    }
+
+    // Byte offset of the EEPROM payload inside the written buffer.
+    //
+    // write_eeprom sends, in order:
+    //   CMD_TRANSFER_STARTED (8) + CMD_SEND_EEPROM (12) + CMD_SEND_START (8) = 28 bytes
+    // before the 1024-byte EEPROM data.
+    const WRITE_EEPROM_DATA_OFFSET: usize = 28;
+
+    // When preceded by a load_eeprom call (CMD_GET_COMPLETE_EEPROM = 12 bytes):
+    const LOAD_THEN_WRITE_EEPROM_DATA_OFFSET: usize = 12 + WRITE_EEPROM_DATA_OFFSET;
+
+    // ── Tests ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn load_unit_info_returns_raw_response() {
+        let mut raw = vec![0u8; 76];
+        raw[5] = 0x42;
+        let (mock, _written) = MockPort::new(&raw);
+        let mut port = mock.into_box();
+        let result = load_unit_info(&mut port).unwrap();
+        assert_eq!(result.len(), 76);
+        assert_eq!(result[5], 0x42);
+    }
+
+    #[test]
+    fn load_eeprom_strips_five_byte_header() {
+        let mut eeprom = [0u8; 1024];
+        eeprom[0] = 0xAB;
+        eeprom[1023] = 0xCD;
+        let (mock, _written) = MockPort::new(&eeprom_response(&eeprom));
+        let mut port = mock.into_box();
+        let result = load_eeprom(&mut port).unwrap();
+        assert_eq!(result.len(), 1024);
+        assert_eq!(result[0], 0xAB);
+        assert_eq!(result[1023], 0xCD);
+    }
+
+    #[test]
+    fn get_settings_returns_correct_slice() {
+        let mut eeprom = [0u8; 1024];
+        eeprom[272] = 0x11;
+        eeprom[303] = 0x22;
+        let (mock, _written) = MockPort::new(&eeprom_response(&eeprom));
+        let mut port = mock.into_box();
+        let result = get_settings(&mut port).unwrap();
+        assert_eq!(result.len(), 32);
+        assert_eq!(result[0], 0x11);
+        assert_eq!(result[31], 0x22);
+    }
+
+    #[test]
+    fn get_totals_returns_correct_slice() {
+        let mut eeprom = [0u8; 1024];
+        eeprom[304] = 0x55;
+        eeprom[323] = 0x66;
+        let (mock, _written) = MockPort::new(&eeprom_response(&eeprom));
+        let mut port = mock.into_box();
+        let result = get_totals(&mut port).unwrap();
+        assert_eq!(result.len(), 20);
+        assert_eq!(result[0], 0x55);
+        assert_eq!(result[19], 0x66);
+    }
+
+    #[test]
+    fn get_sleep_screen_returns_correct_slice() {
+        let mut eeprom = [0u8; 1024];
+        eeprom[96] = 0x77;
+        eeprom[267] = 0x88;
+        let (mock, _written) = MockPort::new(&eeprom_response(&eeprom));
+        let mut port = mock.into_box();
+        let result = get_sleep_screen(&mut port).unwrap();
+        assert_eq!(result.len(), 172);
+        assert_eq!(result[0], 0x77);
+        assert_eq!(result[171], 0x88);
+    }
+
+    #[test]
+    fn write_eeprom_sends_data_in_chunks() {
+        let mut eeprom = [0u8; 1024];
+        eeprom[0] = 0xDE;
+        eeprom[1023] = 0xAD;
+        let (mock, written) = MockPort::new(&write_eeprom_replies());
+        let mut port = mock.into_box();
+        write_eeprom(&mut port, &eeprom).unwrap();
+        let w = written.lock().unwrap();
+        let sent = &w[WRITE_EEPROM_DATA_OFFSET..WRITE_EEPROM_DATA_OFFSET + 1024];
+        assert_eq!(sent[0], 0xDE);
+        assert_eq!(sent[1023], 0xAD);
+    }
+
+    #[test]
+    fn set_sleep_screen_patches_bitmap_and_update_flags() {
+        let orig_eeprom = [0u8; 1024];
+        let mut payload = [0u8; 172];
+        payload[0] = 0x01; // active id
+        payload[168] = 27; // clock_x
+        let mut responses = eeprom_response(&orig_eeprom);
+        responses.extend(write_eeprom_replies());
+        let (mock, written) = MockPort::new(&responses);
+        let mut port = mock.into_box();
+        set_sleep_screen(&mut port, &payload).unwrap();
+        let w = written.lock().unwrap();
+        let sent =
+            &w[LOAD_THEN_WRITE_EEPROM_DATA_OFFSET..LOAD_THEN_WRITE_EEPROM_DATA_OFFSET + 1024];
+        assert_eq!(sent[96], 0x01);
+        assert_eq!(sent[96 + 168], 27);
+        assert_eq!(&sent[80..84], &[0x08, 0x02, 0x01, 0x0C]);
+    }
+
+    #[test]
+    fn get_agps_flash_header_valid_checksum() {
+        // 5-byte header + 15-byte payload = 20 bytes, then seed-0 checksum
+        let mut data = [0u8; 20];
+        data[10] = 24; // distinguishing marker
+        let frame = with_seed0_checksum(&data);
+        let (mock, _written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        let result = get_agps_flash_header(&mut port).unwrap();
+        assert_eq!(result.len(), 15);
+        assert_eq!(result[5], 24); // payload byte at raw offset 10
+    }
+
+    #[test]
+    fn get_agps_flash_header_bad_checksum_fails() {
+        let mut frame = with_seed0_checksum(&[0u8; 20]);
+        *frame.last_mut().unwrap() ^= 0xFF;
+        let (mock, _written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        assert!(get_agps_flash_header(&mut port).is_err());
+    }
+
+    #[test]
+    fn get_log_header_count_reads_byte5() {
+        let mut reply = [0u8; 8];
+        reply[5] = 3;
+        let (mock, _written) = MockPort::new(&reply);
+        let mut port = mock.into_box();
+        let meta = get_log_header_count(&mut port).unwrap();
+        assert_eq!(meta.count, 3);
+    }
+
+    #[test]
+    fn get_log_headers_strips_framing() {
+        // count=1: len=65, total=71 (5 header + 65 payload + 1 checksum)
+        let mut payload = [0u8; 65];
+        payload[0] = 0xBE;
+        payload[64] = 0xEF;
+        let mut frame = vec![0u8; 5];
+        frame.extend_from_slice(&payload);
+        let frame = with_seed0_checksum(&frame);
+        let (mock, _written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        let result = get_log_headers(&mut port, 1).unwrap();
+        assert_eq!(result.len(), 65);
+        assert_eq!(result[0], 0xBE);
+        assert_eq!(result[64], 0xEF);
+    }
+
+    #[test]
+    fn get_log_headers_bad_checksum_fails() {
+        let mut frame = with_seed0_checksum(&[0u8; 5 + 65]);
+        *frame.last_mut().unwrap() ^= 0xFF;
+        let (mock, _written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        assert!(get_log_headers(&mut port, 1).is_err());
+    }
+
+    #[test]
+    fn get_log_data_strips_framing() {
+        // start=0x1000, stop=0x1004: len=5, total=12 (5+5+2)
+        let payload = [0x11u8, 0x22, 0x33, 0x44, 0x55];
+        let mut frame = vec![0u8; 5];
+        frame.extend_from_slice(&payload);
+        frame.extend_from_slice(&[0, 0]);
+        let (mock, _written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        let result = get_log_data(&mut port, 0x1000, 0x1004).unwrap();
+        assert_eq!(result, &[0x11, 0x22, 0x33, 0x44, 0x55]);
+    }
+
+    #[test]
+    fn set_home_altitude_encodes_alt1_correctly() {
+        let orig_eeprom = [0u8; 1024];
+        let mut responses = eeprom_response(&orig_eeprom);
+        responses.extend(write_eeprom_replies());
+        let (mock, written) = MockPort::new(&responses);
+        let mut port = mock.into_box();
+        // 500 m → raw = 500*10 + 10000 = 15000 = 0x3A98
+        set_home_altitude(&mut port, Some(500), None).unwrap();
+        let w = written.lock().unwrap();
+        let sent =
+            &w[LOAD_THEN_WRITE_EEPROM_DATA_OFFSET..LOAD_THEN_WRITE_EEPROM_DATA_OFFSET + 1024];
+        let settings = &sent[272..272 + 32];
+        assert_eq!(settings[7], 0x98);
+        assert_eq!(settings[8], 0x3A);
+        assert_eq!(&sent[80..84], &[0x10, 0x02, 0x01, 0x14]);
+    }
+
+    #[test]
+    fn set_home_altitude_encodes_alt2_correctly() {
+        let orig_eeprom = [0u8; 1024];
+        let mut responses = eeprom_response(&orig_eeprom);
+        responses.extend(write_eeprom_replies());
+        let (mock, written) = MockPort::new(&responses);
+        let mut port = mock.into_box();
+        // 200 m → raw = 200*10 + 10000 = 12000 = 0x2EE0
+        set_home_altitude(&mut port, None, Some(200)).unwrap();
+        let w = written.lock().unwrap();
+        let sent =
+            &w[LOAD_THEN_WRITE_EEPROM_DATA_OFFSET..LOAD_THEN_WRITE_EEPROM_DATA_OFFSET + 1024];
+        let settings = &sent[272..272 + 32];
+        assert_eq!(settings[9], 0xE0);
+        assert_eq!(settings[10], 0x2E);
+    }
+
+    #[test]
+    fn delete_tracks_memory_sets_update_flags() {
+        let orig_eeprom = [0u8; 1024];
+        let mut responses = eeprom_response(&orig_eeprom);
+        responses.extend(write_eeprom_replies());
+        let (mock, written) = MockPort::new(&responses);
+        let mut port = mock.into_box();
+        delete_tracks_memory(&mut port).unwrap();
+        let w = written.lock().unwrap();
+        let sent =
+            &w[LOAD_THEN_WRITE_EEPROM_DATA_OFFSET..LOAD_THEN_WRITE_EEPROM_DATA_OFFSET + 1024];
+        assert_eq!(&sent[80..84], &[0x00, 0x06, 0x01, 0x08]);
+    }
+
+    #[test]
+    fn upload_agps_sends_data_to_port() {
+        // CMD_SEND_AGPS reply (8) + CMD_SEND_START reply (9) + CMD_SEND_END reply (9)
+        let mut responses = vec![0u8; 8];
+        responses.extend_from_slice(&[0u8; 9]);
+        responses.extend_from_slice(&[0u8; 9]);
+        let data = vec![0xAAu8; 128]; // 2 × 64-byte chunks
+        let (mock, written) = MockPort::new(&responses);
+        let mut port = mock.into_box();
+        upload_agps(&mut port, &data).unwrap();
+        let w = written.lock().unwrap();
+        // CMD_TRANSFER_STARTED(8) + CMD_SEND_AGPS(12) + CMD_SEND_START(8) = 28 bytes before data
+        let data_offset = 28;
+        let sent_data = &w[data_offset..data_offset + 128];
+        assert!(sent_data.iter().all(|&b| b == 0xAA));
+    }
 }
