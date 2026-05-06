@@ -928,6 +928,33 @@ mod tests {
         assert!(points[0].longitude < 0.0);
     }
 
+    fn make_pause_entry(pause_units: u8) -> Vec<u8> {
+        // byte 0 bit 0 = 1 → pause entry; 32 bytes total (31 payload + 1 CRC)
+        let mut e = [0u8; 31];
+        e[0] = 1; // entry_type = pause
+        e[18] = pause_units;
+        // fill coord bytes with a valid zero-ish coord (north, east)
+        e[13] = (1 << 4) | (1 << 5); // north + east
+        with_checksum(&e)
+    }
+
+    #[test]
+    fn log_data_pause_marker_advances_time() {
+        // pause_units = 100 → 100 * 100 ms = 10 000 ms elapsed after the pause point
+        let pause = make_pause_entry(100);
+        let normal = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);
+        let data = [pause, normal].concat();
+        let points = decode_log_data(&data);
+        assert_eq!(points.len(), 2);
+        let pause_pt = &points[0];
+        let normal_pt = &points[1];
+        assert!(pause_pt.is_pause);
+        assert_eq!(pause_pt.training_time_ms, 0);
+        // normal point after 100-unit pause: 100 * 100 ms = 10 000 ms
+        assert_eq!(normal_pt.training_time_ms, 10_000);
+        assert!(!normal_pt.is_pause);
+    }
+
     #[test]
     fn log_data_bad_checksum_stops_parsing() {
         let mut entry = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);

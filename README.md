@@ -161,6 +161,24 @@ Pass `-v` (or `--verbose`) before any subcommand to enable debug output:
 sigma-pure-gps-cli -v update
 ```
 
+## Development
+
+### Running tests
+
+```bash
+cargo test
+```
+
+### Generating an HTML coverage report
+
+Requires [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov):
+
+```bash
+cargo install cargo-llvm-cov
+cargo llvm-cov --html --open
+# report opens at target/llvm-cov/html/index.html
+```
+
 ## License
 
 MIT
