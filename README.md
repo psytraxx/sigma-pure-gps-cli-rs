@@ -67,6 +67,8 @@ Commands:
   info                Query device serial number and firmware version
   get-settings        Read device settings (timezone, language, units, contrast, …)
   get-totals          Read cumulative totals (distance, time, calories, climb)
+  get-sleep-screen    Read the sleep screen / watch face bitmap from the device and save as PNG
+  set-sleep-screen    Upload a PNG bitmap as the device sleep screen / watch face
   agps-date           Show the AGPS data date currently stored on the device
   set-home-altitude   Set home altitude 1 and/or 2 on the device (in metres)
   delete-tracks       Permanently erase all activity data from the device
@@ -110,6 +112,24 @@ sigma-pure-gps-cli get-totals
 sigma-pure-gps-cli agps-date
 ```
 
+### Download sleep screen / watch face
+
+Reads the watch face bitmap from the device and saves it as a 16×59 PNG. The PNG includes `clock_x`, `clock_y`, and `name_pos` metadata so it can be edited and uploaded back later.
+
+```bash
+sigma-pure-gps-cli get-sleep-screen
+sigma-pure-gps-cli get-sleep-screen my_face.png
+```
+
+### Upload sleep screen / watch face
+
+Uploads a PNG (16×59 px, 1-bit grayscale) to the device. Use `get-sleep-screen` or `scripts/generate_bitmaps.sh` to create a valid PNG. The PNG must have `clock_x`, `clock_y`, and `name_pos` `tEXt` metadata chunks.
+
+```bash
+sigma-pure-gps-cli set-sleep-screen bitmaps/bike_and_hills.png
+sigma-pure-gps-cli set-sleep-screen my_face.png
+```
+
 ### Set home altitude
 
 Writes one or both home altitude slots to the device (in metres). At least one flag is required.
@@ -139,6 +159,24 @@ Pass `-v` (or `--verbose`) before any subcommand to enable debug output:
 
 ```bash
 sigma-pure-gps-cli -v update
+```
+
+## Development
+
+### Running tests
+
+```bash
+cargo test
+```
+
+### Generating an HTML coverage report
+
+Requires [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov):
+
+```bash
+cargo install cargo-llvm-cov
+cargo llvm-cov --html --open
+# report opens at target/llvm-cov/html/index.html
 ```
 
 ## License

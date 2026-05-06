@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use tracing::info;
 
 pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
@@ -6,11 +6,9 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
     info!("Using port: {port_name}");
 
     let output_dir = output_dir.to_owned();
-    let tracks = tokio::task::spawn_blocking(move || {
-        super::download_tracks::download_from_device(&port_name)
-    })
-    .await
-    .context("Download tracks task panicked")??;
+    let tracks =
+        crate::util::run_blocking(move || super::download_tracks::download_from_device(&port_name))
+            .await?;
 
     if tracks.is_empty() {
         return Ok(());

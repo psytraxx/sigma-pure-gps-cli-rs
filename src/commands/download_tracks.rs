@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use tracing::{error, info};
 
 use crate::decoder::{LogHeader, TrackPoint};
@@ -21,6 +21,9 @@ pub fn download_from_device(port_name: &str) -> Result<Vec<Track>> {
         return Ok(vec![]);
     }
 
+    // The device needs ~1.5 s after CMD_GET_LOG_HEADER_COUNT before it will respond to
+    // CMD_GET_LOG_HEADERS. Without this delay the header read times out. Value determined
+    // empirically by the original ActionScript implementation (Gps10Handler.as).
     std::thread::sleep(std::time::Duration::from_millis(1500));
 
     let header_bytes = crate::protocol::get_log_headers(&mut port, meta.count)?;
@@ -71,9 +74,7 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
     info!("Using port: {port_name}");
 
     let output_dir = output_dir.to_owned();
-    let tracks = tokio::task::spawn_blocking(move || download_from_device(&port_name))
-        .await
-        .context("Download tracks task panicked")??;
+    let tracks = crate::util::run_blocking(move || download_from_device(&port_name)).await?;
 
     if tracks.is_empty() {
         return Ok(());
@@ -82,10 +83,33 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
     std::fs::create_dir_all(&output_dir)?;
 
     let client = crate::util::build_http_client()?;
-    for mut track in tracks {
-        info!("  Correcting elevation via Sigma elevation service...");
-        crate::elevation::correct_elevation(&client, &mut track.points).await?;
 
+    // Correct elevation for all tracks concurrently — each track is one HTTP request,
+    // so running them in parallel cuts total wait time from N×latency to ~1×latency.
+    let mut join_set: tokio::task::JoinSet<Result<Track>> = tokio::task::JoinSet::new();
+    for mut track in tracks {
+        let client = client.clone();
+        join_set.spawn(async move {
+            info!("  Correcting elevation via Sigma elevation service...");
+            crate::elevation::correct_elevation(&client, &mut track.points).await?;
+            Ok(track)
+        });
+    }
+
+    // Collect in completion order; abort all remaining tasks on first error.
+    let mut corrected: Vec<Track> = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        match res {
+            Ok(Ok(track)) => corrected.push(track),
+            Ok(Err(e)) => return Err(e),
+            Err(e) => return Err(anyhow::anyhow!("Elevation correction task panicked: {e}")),
+        }
+    }
+
+    // Sort by original index so output files are written in track order.
+    corrected.sort_by_key(|t| t.index);
+
+    for track in corrected {
         let meta = crate::gpx::GpxMeta::from(&track.header);
         let filename = crate::gpx::track_filename(&meta, track.index);
         let path = std::path::Path::new(&output_dir).join(&filename);

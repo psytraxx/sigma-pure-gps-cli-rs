@@ -1,7 +1,5 @@
 mod commands;
 mod decoder;
-mod device;
-mod downloader;
 mod elevation;
 mod gpx;
 mod protocol;
@@ -44,6 +42,18 @@ enum Command {
     GetSettings,
     /// Read cumulative totals (distance, time, calories, climb)
     GetTotals,
+    /// Read the sleep screen / watch face bitmap from the device and save it as a PNG
+    GetSleepScreen {
+        /// Output PNG file path
+        #[arg(default_value = "sleep_screen.png")]
+        output: String,
+    },
+    /// Upload a PNG bitmap as the device sleep screen / watch face
+    SetSleepScreen {
+        /// Input PNG file (16×59 px, 1-bit grayscale, with clock_x/clock_y/name_pos tEXt chunks)
+        #[arg(default_value = "sleep_screen.png")]
+        input: String,
+    },
     /// Show the date of the AGPS data currently on the device
     AgpsDate,
     /// Download recorded tracks from the device, correct elevation via Sigma elevation service
@@ -93,6 +103,12 @@ async fn main() -> Result<()> {
         Command::Info => commands::info::run(cli.port).await,
         Command::GetSettings => commands::get_settings::run(cli.port).await,
         Command::GetTotals => commands::get_totals::run(cli.port).await,
+        Command::GetSleepScreen { output } => {
+            commands::get_sleep_screen::run(cli.port, &output).await
+        }
+        Command::SetSleepScreen { input } => {
+            commands::set_sleep_screen::run(cli.port, &input).await
+        }
         Command::AgpsDate => commands::agps_date::run(cli.port).await,
         Command::DownloadTracks { output_dir } => {
             commands::download_tracks::run(cli.port, &output_dir).await

@@ -16,7 +16,7 @@ pub async fn run(port_arg: Option<String>, alt1_m: Option<i32>, alt2_m: Option<i
         info!("Setting home altitude 2 to {m} m");
     }
 
-    tokio::task::spawn_blocking(move || {
+    crate::util::run_blocking(move || {
         let mut port = crate::protocol::open_port(&port_name)?;
         crate::protocol::load_unit_info(&mut port)?;
         crate::protocol::set_home_altitude(&mut port, alt1_m, alt2_m)?;
@@ -30,8 +30,7 @@ pub async fn run(port_arg: Option<String>, alt1_m: Option<i32>, alt2_m: Option<i
         }
         Ok::<_, anyhow::Error>(())
     })
-    .await
-    .unwrap_or_else(|e| Err(anyhow::anyhow!("Task panicked: {e}")))?;
+    .await?;
 
     Ok(())
 }
