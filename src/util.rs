@@ -81,7 +81,11 @@ pub async fn download_agps(client: &reqwest::Client) -> Result<AgpsData> {
 
 async fn try_download_agps(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
     debug!("Downloading AGPS data from {url}");
-    let resp = client.get(url).send().await.context("HTTP request failed")?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .context("HTTP request failed")?;
     if !resp.status().is_success() {
         bail!("Server returned {}", resp.status());
     }

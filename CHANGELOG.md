@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Replaced always-zero expression `(42195 >> 16 & 0xFF)` in test helper with literal `0u8`
+- Refactored `make_totals_bytes` and `make_normal_entry` test helpers to group related parameters into tuples, eliminating clippy `too_many_arguments` warnings without suppression attributes
+
 ## [0.3.0]
 
 ### Added

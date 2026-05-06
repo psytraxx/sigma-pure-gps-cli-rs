@@ -606,10 +606,9 @@ mod tests {
         time_units: u32,
         cal: u32,
         climb_raw: u32,
-        year_off: u8,
-        month: u8,
-        day: u8,
+        date: (u8, u8, u8), // (year_off, month, day)
     ) -> Vec<u8> {
+        let (year_off, month, day) = date;
         let mut d = [0u8; 19];
         d[0] = (dist_m & 0xFF) as u8;
         d[1] = (dist_m >> 8 & 0xFF) as u8;
@@ -635,7 +634,7 @@ mod tests {
 
     #[test]
     fn totals_zero() {
-        let data = make_totals_bytes(0, 0, 0, 0, 0, 24, 5, 6);
+        let data = make_totals_bytes(0, 0, 0, 0, 0, (24, 5, 6));
         let t = decode_totals(&data).unwrap();
         assert_eq!(t.total_distance_km, 0.0);
         assert_eq!(t.total_training_time_ms, 0);
@@ -647,7 +646,7 @@ mod tests {
     #[test]
     fn totals_distance_1000km() {
         // 1 000 000 m integer part, 500 fractional metres
-        let data = make_totals_bytes(1_000_000, 500, 0, 0, 0, 0, 1, 1);
+        let data = make_totals_bytes(1_000_000, 500, 0, 0, 0, (0, 1, 1));
         let t = decode_totals(&data).unwrap();
         assert!((t.total_distance_km - 1000.0005).abs() < 1e-9);
     }
@@ -655,14 +654,14 @@ mod tests {
     #[test]
     fn totals_training_time() {
         // time_units = 36000 → 36000 * 1000 ms = 36_000_000 ms = 10 h
-        let data = make_totals_bytes(0, 0, 36_000, 0, 0, 0, 1, 1);
+        let data = make_totals_bytes(0, 0, 36_000, 0, 0, (0, 1, 1));
         let t = decode_totals(&data).unwrap();
         assert_eq!(t.total_training_time_ms, 36_000_000);
     }
 
     #[test]
     fn totals_calories() {
-        let data = make_totals_bytes(0, 0, 0, 500, 0, 0, 1, 1);
+        let data = make_totals_bytes(0, 0, 0, 500, 0, (0, 1, 1));
         let t = decode_totals(&data).unwrap();
         assert_eq!(t.total_calories_kcal, 500);
     }
@@ -670,14 +669,14 @@ mod tests {
     #[test]
     fn totals_climb() {
         // climb_raw = 10000 → 10000 / 10000 = 1.0 m
-        let data = make_totals_bytes(0, 0, 0, 0, 10_000, 0, 1, 1);
+        let data = make_totals_bytes(0, 0, 0, 0, 10_000, (0, 1, 1));
         let t = decode_totals(&data).unwrap();
         assert!((t.total_climb_m - 1.0).abs() < 1e-9);
     }
 
     #[test]
     fn totals_bad_checksum() {
-        let mut data = make_totals_bytes(0, 0, 0, 0, 0, 0, 1, 1);
+        let mut data = make_totals_bytes(0, 0, 0, 0, 0, (0, 1, 1));
         *data.last_mut().unwrap() ^= 0xFF;
         assert!(decode_totals(&data).is_err());
     }
@@ -788,7 +787,7 @@ mod tests {
         // distance: 42195 m (marathon)
         h[30] = (42195 & 0xFF) as u8;
         h[31] = (42195 >> 8 & 0xFF) as u8;
-        h[32] = (42195 >> 16 & 0xFF) as u8;
+        h[32] = 0u8; // 42195 = 0xA4B3, high byte is zero
         // start_addr = 0x00001000
         h[33] = 0x00;
         h[34] = 0x10;
@@ -844,16 +843,14 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn make_normal_entry(
-        lat_deg: u8,
-        lat_min_raw: u32,
-        north: bool,
-        lon_deg: u8,
-        lon_min_raw: u32,
-        east: bool,
+        lat: (u8, u32, bool), // (deg, min_raw, north)
+        lon: (u8, u32, bool), // (deg, min_raw, east)
         alt_raw: u16,
         speed_cmps: u16,
         temp_raw: u8,
     ) -> Vec<u8> {
+        let (lat_deg, lat_min_raw, north) = lat;
+        let (lon_deg, lon_min_raw, east) = lon;
         let mut e = [0u8; 24];
         // byte 0 bit 0 = 0 → normal entry; bit 5 = 0 → positive incline sign
         e[0] = 0;
@@ -890,7 +887,7 @@ mod tests {
         // temp_raw = 35 → 35 - 10 = 25 °C
         let temp: u8 = 35;
 
-        let entry = make_normal_entry(47, lat_min, true, 8, lon_min, true, alt_raw, speed, temp);
+        let entry = make_normal_entry((47, lat_min, true), (8, lon_min, true), alt_raw, speed, temp);
         let points = decode_log_data(&entry);
         assert_eq!(points.len(), 1);
         let pt = &points[0];
@@ -906,7 +903,7 @@ mod tests {
     #[test]
     fn log_data_elapsed_time_advances() {
         // Two consecutive normal entries — second should have training_time_ms = 5000
-        let entry = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);
+        let entry = make_normal_entry((47, 220_000, true), (8, 330_000, true), 1500, 0, 20);
         let two = [entry.clone(), entry].concat();
         let points = decode_log_data(&two);
         assert_eq!(points.len(), 2);
@@ -917,7 +914,7 @@ mod tests {
     #[test]
     fn log_data_south_west_coords() {
         // South (-lat), West (-lon)
-        let entry = make_normal_entry(33, 550_000, false, 70, 450_000, false, 1000, 0, 20);
+        let entry = make_normal_entry((33, 550_000, false), (70, 450_000, false), 1000, 0, 20);
         let points = decode_log_data(&entry);
         assert_eq!(points.len(), 1);
         assert!(points[0].latitude < 0.0);
@@ -938,7 +935,7 @@ mod tests {
     fn log_data_pause_marker_advances_time() {
         // pause_units = 100 → 100 * 100 ms = 10 000 ms elapsed after the pause point
         let pause = make_pause_entry(100);
-        let normal = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);
+        let normal = make_normal_entry((47, 220_000, true), (8, 330_000, true), 1500, 0, 20);
         let data = [pause, normal].concat();
         let points = decode_log_data(&data);
         assert_eq!(points.len(), 2);
@@ -953,7 +950,7 @@ mod tests {
 
     #[test]
     fn log_data_bad_checksum_stops_parsing() {
-        let mut entry = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);
+        let mut entry = make_normal_entry((47, 220_000, true), (8, 330_000, true), 1500, 0, 20);
         *entry.last_mut().unwrap() ^= 0xFF;
         let points = decode_log_data(&entry);
         assert!(points.is_empty());
