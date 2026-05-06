@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.3.0]
 
 ### Added
 - `get-sleep-screen` subcommand — reads the 172-byte sleep screen block from EEPROM offset 96, decodes the 16×59 pixel watch face bitmap and metadata (clock position, name position), and saves it as a 1-bit grayscale PNG with `clock_x`, `clock_y`, and `name_pos` `tEXt` metadata chunks; the PNG can be edited in any image editor and later uploaded back to the device
