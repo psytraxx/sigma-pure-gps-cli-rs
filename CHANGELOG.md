@@ -10,6 +10,7 @@
 - `png` crate dependency (`0.17`) for 1-bit grayscale PNG with `tEXt` chunk support
 - `bitmaps/bike_and_hills.png` — test bitmap generated from the `bikeAndHills()` preset in `SleepScreenSign.as`
 - `scripts/generate_bitmaps.sh` — uses ImageMagick + Python to render preset dot coordinates into 16×59 1-bit PNGs with embedded metadata
+- `.github/workflows/main.yaml` — added `cargo test --verbose` step to the existing CI pipeline
 - `GpxMeta` struct in `src/gpx.rs` — decouples track metadata from `LogHeader`; enables the GPX writer to carry summary stats independent of the data source
 
 ### Changed

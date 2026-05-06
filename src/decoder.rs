@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use std::io::{BufRead, Seek, Write};
 
@@ -374,7 +374,11 @@ fn decode_coord(degree: u8, m0: u8, m1: u8, m2: u8, positive: bool) -> f64 {
     // Reconstruct the 20-bit minutes value from the three bytes.
     let minutes = (((m2 as u32 & 0x0F) << 16) | ((m1 as u32) << 8) | m0 as u32) as f64 / 10000.0;
     let decimal = degree as f64 + minutes / 60.0;
-    if positive { decimal } else { -decimal }
+    if positive {
+        decimal
+    } else {
+        -decimal
+    }
 }
 
 /// Raw 16×59 pixel bitmap + metadata decoded from the 172-byte sleep screen EEPROM block.
@@ -548,4 +552,566 @@ fn verify_checksum(data: &[u8], seed: u8) -> Result<()> {
         bail!("Checksum mismatch: got {computed:#04x}, expected {expected:#04x}");
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Helpers shared across tests
+// ---------------------------------------------------------------------------
+
+/// Appends a seed-1 checksum byte to a slice and returns the full Vec.
+#[cfg(test)]
+fn with_checksum(data: &[u8]) -> Vec<u8> {
+    let crc = data.iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+    let mut v = data.to_vec();
+    v.push(crc);
+    v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    // -----------------------------------------------------------------------
+    // decode_agps_date
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn agps_date_valid() {
+        let mut data = vec![0u8; 13];
+        data[10] = 24; // year offset from 2000
+        data[11] = 5; // month
+        data[12] = 6; // day
+        let date = decode_agps_date(&data).unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 5, 6).unwrap());
+    }
+
+    #[test]
+    fn agps_date_too_short() {
+        assert!(decode_agps_date(&[0u8; 12]).is_err());
+    }
+
+    #[test]
+    fn agps_date_invalid_calendar() {
+        let mut data = vec![0u8; 13];
+        data[10] = 24;
+        data[11] = 13; // month 13 — invalid
+        data[12] = 1;
+        assert!(decode_agps_date(&data).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // decode_totals
+    // -----------------------------------------------------------------------
+
+    fn make_totals_bytes(
+        dist_m: u32,
+        dist_frac: u16,
+        time_units: u32,
+        cal: u32,
+        climb_raw: u32,
+        year_off: u8,
+        month: u8,
+        day: u8,
+    ) -> Vec<u8> {
+        let mut d = [0u8; 19];
+        d[0] = (dist_m & 0xFF) as u8;
+        d[1] = (dist_m >> 8 & 0xFF) as u8;
+        d[2] = (dist_m >> 16 & 0xFF) as u8;
+        d[3] = (dist_m >> 24 & 0x0F) as u8;
+        d[4] = (dist_frac & 0xFF) as u8;
+        d[5] = (dist_frac >> 8 & 0x03) as u8;
+        d[6] = (time_units & 0xFF) as u8;
+        d[7] = (time_units >> 8 & 0xFF) as u8;
+        d[8] = (time_units >> 16 & 0xFF) as u8;
+        d[9] = (time_units >> 24 & 0x03) as u8;
+        d[10] = (cal & 0xFF) as u8;
+        d[11] = (cal >> 8 & 0xFF) as u8;
+        d[12] = (cal >> 16 & 0x01) as u8;
+        d[13] = (climb_raw & 0xFF) as u8;
+        d[14] = (climb_raw >> 8 & 0xFF) as u8;
+        d[15] = (climb_raw >> 16 & 0x0F) as u8;
+        d[16] = year_off & 0x3F;
+        d[17] = month;
+        d[18] = day & 0x1F;
+        with_checksum(&d)
+    }
+
+    #[test]
+    fn totals_zero() {
+        let data = make_totals_bytes(0, 0, 0, 0, 0, 24, 5, 6);
+        let t = decode_totals(&data).unwrap();
+        assert_eq!(t.total_distance_km, 0.0);
+        assert_eq!(t.total_training_time_ms, 0);
+        assert_eq!(t.total_calories_kcal, 0);
+        assert_eq!(t.total_climb_m, 0.0);
+        assert_eq!(t.reset_date, NaiveDate::from_ymd_opt(2024, 5, 6));
+    }
+
+    #[test]
+    fn totals_distance_1000km() {
+        // 1 000 000 m integer part, 500 fractional metres
+        let data = make_totals_bytes(1_000_000, 500, 0, 0, 0, 0, 1, 1);
+        let t = decode_totals(&data).unwrap();
+        assert!((t.total_distance_km - 1000.0005).abs() < 1e-9);
+    }
+
+    #[test]
+    fn totals_training_time() {
+        // time_units = 36000 → 36000 * 1000 ms = 36_000_000 ms = 10 h
+        let data = make_totals_bytes(0, 0, 36_000, 0, 0, 0, 1, 1);
+        let t = decode_totals(&data).unwrap();
+        assert_eq!(t.total_training_time_ms, 36_000_000);
+    }
+
+    #[test]
+    fn totals_calories() {
+        let data = make_totals_bytes(0, 0, 0, 500, 0, 0, 1, 1);
+        let t = decode_totals(&data).unwrap();
+        assert_eq!(t.total_calories_kcal, 500);
+    }
+
+    #[test]
+    fn totals_climb() {
+        // climb_raw = 10000 → 10000 / 10000 = 1.0 m
+        let data = make_totals_bytes(0, 0, 0, 0, 10_000, 0, 1, 1);
+        let t = decode_totals(&data).unwrap();
+        assert!((t.total_climb_m - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn totals_bad_checksum() {
+        let mut data = make_totals_bytes(0, 0, 0, 0, 0, 0, 1, 1);
+        *data.last_mut().unwrap() ^= 0xFF;
+        assert!(decode_totals(&data).is_err());
+    }
+
+    #[test]
+    fn totals_too_short() {
+        assert!(decode_totals(&[0u8; 5]).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // decode_settings
+    // -----------------------------------------------------------------------
+
+    fn make_settings_bytes() -> Vec<u8> {
+        let mut d = [0u8; 31];
+        // byte 0: timeZone=16 (GMT+01:00), summerTime=1, clockMode=24h
+        d[0] = 16 | (1 << 6); // tz=16, summer=1, clock=0→24h
+                              // byte 1: language=1(de), autoPause=0, speed=0(km/h), altRef=0(actual), contrast=2→stored as 1
+        d[1] = 1 | (1 << 6); // language=de, contrast=2 (bits 7:6 = 01)
+                             // byte 2: dateFormat=eu, temp=celsius, alt=meter, nfc=1, systemTone=0; also bits 7:5 = 101
+        d[2] = (1 << 3) | 0xA0; // nfc=1, plus 0xA0 from encodeSettings constant
+                                // actualAltitude: raw = 442*10 + 10000 = 14420 = 0x3854
+        d[3] = 0x54;
+        d[4] = 0x38;
+        // seaLevel: raw = (1013.25 - 900) * 10 = 1132 ≈ 1132 = 0x046C (masked to 11 bits)
+        let sl: u16 = 1132;
+        d[5] = (sl & 0xFF) as u8;
+        d[6] = (sl >> 8) as u8;
+        // homeAlt1 = 500m: raw = 500*10+10000=15000=0x3A98
+        d[7] = 0x98;
+        d[8] = 0x3A;
+        // homeAlt2 = 0m: raw = 10000=0x2710
+        d[9] = 0x10;
+        d[10] = 0x27;
+        // name: "Test" = 0x54 0x65 0x73 0x74
+        d[11] = b'T';
+        d[12] = b'e';
+        d[13] = b's';
+        d[14] = b't';
+        // auto-lap: 5000m = 0x1388
+        d[20] = 0x88;
+        d[21] = 0x13;
+        with_checksum(&d)
+    }
+
+    #[test]
+    fn settings_decode_fields() {
+        let data = make_settings_bytes();
+        let s = decode_settings(&data).unwrap();
+        assert_eq!(s.time_zone, "GMT +01:00");
+        assert!(s.summer_time);
+        assert_eq!(s.clock_mode, 24);
+        assert_eq!(s.language, "de");
+        assert!(!s.auto_pause);
+        assert_eq!(s.speed_unit, "km/h");
+        assert_eq!(s.altitude_reference, "actual altitude");
+        assert_eq!(s.contrast, 2);
+        assert_eq!(s.date_format, "DD-MM-YY");
+        assert_eq!(s.temperature_unit, "°C");
+        assert_eq!(s.altitude_unit, "m");
+        assert!(s.nfc_active);
+        assert!(!s.system_tone);
+        assert_eq!(s.actual_altitude_m, 442);
+        assert_eq!(s.home_altitude1_m, 500);
+        assert_eq!(s.home_altitude2_m, 0);
+        assert_eq!(s.name, "Test");
+        assert_eq!(s.auto_lap_distance_m, 5000);
+    }
+
+    #[test]
+    fn settings_bad_checksum() {
+        let mut data = make_settings_bytes();
+        *data.last_mut().unwrap() ^= 0xFF;
+        assert!(decode_settings(&data).is_err());
+    }
+
+    #[test]
+    fn settings_too_short() {
+        assert!(decode_settings(&[0u8; 10]).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // decode_log_header
+    // -----------------------------------------------------------------------
+
+    fn make_log_header() -> Vec<u8> {
+        let mut h = [0u8; 64];
+        // start date: 2024-04-12 10:07:49
+        h[7] = 0xE8; // year lo: 2024 = 0x07E8
+        h[8] = 0x07; // year hi
+        h[9] = 4; // month
+        h[10] = 12; // day
+        h[11] = 10; // hour
+        h[12] = 7; // minute
+        h[13] = 49; // second
+                    // training time: 3600 s = 36000 * 100ms units → stored as 36000 = 0x8CA0
+        h[16] = 0xA0;
+        h[17] = 0x8C;
+        // max speed: 3600 cm/s = 36.00 km/h → stored as 3600
+        h[20] = 0x10;
+        h[21] = 0x0E;
+        // avg speed: 2520 = 25.20 km/h (0x09D8)
+        h[24] = 0xD8;
+        h[25] = 0x09;
+        // max altitude: raw = 1500 + 1000 = 2500 = 0x09C4
+        h[26] = 0xC4;
+        h[27] = 0x09;
+        // distance: 42195 m (marathon)
+        h[30] = (42195 & 0xFF) as u8;
+        h[31] = (42195 >> 8 & 0xFF) as u8;
+        h[32] = (42195 >> 16 & 0xFF) as u8;
+        // start_addr = 0x00001000
+        h[33] = 0x00;
+        h[34] = 0x10;
+        h[35] = 0x00;
+        h[36] = 0x00;
+        // stop_addr = 0x00002000
+        h[37] = 0x00;
+        h[38] = 0x20;
+        h[39] = 0x00;
+        h[40] = 0x00;
+        // calories = 1234
+        h[41] = (1234 & 0xFF) as u8;
+        h[42] = (1234 >> 8 & 0xFF) as u8;
+        with_checksum(&h)
+    }
+
+    #[test]
+    fn log_header_decode() {
+        let data = make_log_header();
+        let hdr = decode_log_header(&data).unwrap();
+        assert_eq!(
+            hdr.start_date,
+            Utc.from_utc_datetime(
+                &NaiveDate::from_ymd_opt(2024, 4, 12)
+                    .unwrap()
+                    .and_hms_opt(10, 7, 49)
+                    .unwrap()
+            )
+        );
+        assert_eq!(hdr.distance_m, 42195);
+        assert_eq!(hdr.start_addr, 0x1000);
+        assert_eq!(hdr.stop_addr, 0x2000);
+        assert_eq!(hdr.calories_kcal, 1234);
+        assert!((hdr.max_speed_kmh - 36.0).abs() < 0.01);
+        assert!((hdr.avg_speed_kmh - 25.2).abs() < 0.01);
+        assert!((hdr.max_altitude_m - 1500.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn log_header_too_short() {
+        assert!(decode_log_header(&[0u8; 10]).is_err());
+    }
+
+    #[test]
+    fn log_header_bad_checksum() {
+        let mut data = make_log_header();
+        *data.last_mut().unwrap() ^= 0xFF;
+        assert!(decode_log_header(&data).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // decode_log_data — normal GPS point
+    // -----------------------------------------------------------------------
+
+    fn make_normal_entry(
+        lat_deg: u8,
+        lat_min_raw: u32,
+        north: bool,
+        lon_deg: u8,
+        lon_min_raw: u32,
+        east: bool,
+        alt_raw: u16,
+        speed_cmps: u16,
+        temp_raw: u8,
+    ) -> Vec<u8> {
+        let mut e = [0u8; 24];
+        // byte 0 bit 0 = 0 → normal entry; bit 5 = 0 → positive incline sign
+        e[0] = 0;
+        e[5] = temp_raw;
+        e[6] = (speed_cmps & 0xFF) as u8;
+        e[7] = (speed_cmps >> 8) as u8;
+        e[8] = (alt_raw & 0xFF) as u8;
+        e[9] = (alt_raw >> 8) as u8;
+        e[10] = lat_deg;
+        e[11] = (lat_min_raw & 0xFF) as u8;
+        e[12] = (lat_min_raw >> 8 & 0xFF) as u8;
+        // byte 13: high nibble = lat minutes bits 19:16; bit4 = north; bit5 = east
+        e[13] = ((lat_min_raw >> 16) & 0x0F) as u8
+            | if north { 1 << 4 } else { 0 }
+            | if east { 1 << 5 } else { 0 };
+        e[14] = lon_deg;
+        e[15] = (lon_min_raw & 0xFF) as u8;
+        e[16] = (lon_min_raw >> 8 & 0xFF) as u8;
+        e[17] = (lon_min_raw >> 16 & 0x0F) as u8;
+        with_checksum(&e)
+    }
+
+    #[test]
+    fn log_data_single_normal_point() {
+        // Zurich approx: 47°22'N, 8°33'E
+        // lat minutes: 22.0 * 10000 = 220000 = 0x035B60
+        // lon minutes:  33.0 * 10000 = 330000 = 0x050AD0
+        let lat_min = 220_000u32;
+        let lon_min = 330_000u32;
+        // altitude: raw = (500 + 1000) = 1500 = 0x05DC; actual = (1500-1000)*1 = 500 m
+        let alt_raw: u16 = 1500;
+        // speed: 3600 cm/s → 36.00 km/h / 3.6 = 10.0 m/s
+        let speed: u16 = 3600;
+        // temp_raw = 35 → 35 - 10 = 25 °C
+        let temp: u8 = 35;
+
+        let entry = make_normal_entry(47, lat_min, true, 8, lon_min, true, alt_raw, speed, temp);
+        let points = decode_log_data(&entry);
+        assert_eq!(points.len(), 1);
+        let pt = &points[0];
+        assert!((pt.latitude - (47.0 + 22.0 / 60.0)).abs() < 1e-4);
+        assert!((pt.longitude - (8.0 + 33.0 / 60.0)).abs() < 1e-4);
+        assert!((pt.altitude_m - 500.0).abs() < 0.1);
+        assert!((pt.speed_ms - 10.0).abs() < 0.01);
+        assert_eq!(pt.temperature_c, 25);
+        assert_eq!(pt.training_time_ms, 0); // first point starts at t=0
+        assert!(!pt.is_pause);
+    }
+
+    #[test]
+    fn log_data_elapsed_time_advances() {
+        // Two consecutive normal entries — second should have training_time_ms = 5000
+        let entry = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);
+        let two = [entry.clone(), entry].concat();
+        let points = decode_log_data(&two);
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].training_time_ms, 0);
+        assert_eq!(points[1].training_time_ms, 5_000);
+    }
+
+    #[test]
+    fn log_data_south_west_coords() {
+        // South (-lat), West (-lon)
+        let entry = make_normal_entry(33, 550_000, false, 70, 450_000, false, 1000, 0, 20);
+        let points = decode_log_data(&entry);
+        assert_eq!(points.len(), 1);
+        assert!(points[0].latitude < 0.0);
+        assert!(points[0].longitude < 0.0);
+    }
+
+    #[test]
+    fn log_data_bad_checksum_stops_parsing() {
+        let mut entry = make_normal_entry(47, 220_000, true, 8, 330_000, true, 1500, 0, 20);
+        *entry.last_mut().unwrap() ^= 0xFF;
+        let points = decode_log_data(&entry);
+        assert!(points.is_empty());
+    }
+
+    #[test]
+    fn log_data_empty() {
+        assert!(decode_log_data(&[]).is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // decode_sleep_screen
+    // -----------------------------------------------------------------------
+
+    fn make_sleep_screen_payload(
+        active: bool,
+        clock_x: u8,
+        clock_y: u8,
+        name_bottom: bool,
+    ) -> Vec<u8> {
+        let mut buf = vec![0u8; 172];
+        if !active {
+            buf[171] = 1;
+            return buf;
+        }
+        buf[0] = 1; // id = 1
+        buf[168] = clock_x;
+        buf[169] = clock_y;
+        buf[170] = u8::from(name_bottom);
+        let crc = buf[..170].iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+        buf[171] = crc;
+        buf
+    }
+
+    #[test]
+    fn sleep_screen_inactive() {
+        let data = make_sleep_screen_payload(false, 0, 0, false);
+        let s = decode_sleep_screen(&data).unwrap();
+        assert!(!s.active);
+    }
+
+    #[test]
+    fn sleep_screen_active_metadata() {
+        let data = make_sleep_screen_payload(true, 27, 4, false);
+        let s = decode_sleep_screen(&data).unwrap();
+        assert!(s.active);
+        assert_eq!(s.clock_x, 27);
+        assert_eq!(s.clock_y, 4);
+        assert!(!s.name_bottom);
+    }
+
+    #[test]
+    fn sleep_screen_name_bottom() {
+        let data = make_sleep_screen_payload(true, 10, 10, true);
+        let s = decode_sleep_screen(&data).unwrap();
+        assert!(s.name_bottom);
+    }
+
+    #[test]
+    fn sleep_screen_bad_checksum() {
+        let mut data = make_sleep_screen_payload(true, 27, 4, false);
+        data[171] ^= 0xFF;
+        assert!(decode_sleep_screen(&data).is_err());
+    }
+
+    #[test]
+    fn sleep_screen_too_short() {
+        assert!(decode_sleep_screen(&[0u8; 50]).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // encode_sleep_screen — inverse of decode_sleep_screen
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn encode_inactive_screen() {
+        let screen = SleepScreen {
+            active: false,
+            clock_x: 0,
+            clock_y: 0,
+            name_bottom: false,
+            bitmap: Box::new([0u8; 118]),
+        };
+        let buf = encode_sleep_screen(&screen);
+        // All zero except byte 171 = 1 (sentinel)
+        assert!(buf[..171].iter().all(|&b| b == 0));
+        assert_eq!(buf[171], 1);
+    }
+
+    #[test]
+    fn encode_active_screen_id_and_crc() {
+        let mut bitmap = [0u8; 118];
+        bitmap[0] = 0b10110001; // some pixel data
+        let screen = SleepScreen {
+            active: true,
+            clock_x: 27,
+            clock_y: 4,
+            name_bottom: false,
+            bitmap: Box::new(bitmap),
+        };
+        let buf = encode_sleep_screen(&screen);
+        // id bytes
+        assert_eq!(buf[0], 1);
+        assert_eq!(buf[1], 0);
+        assert_eq!(buf[2], 0);
+        assert_eq!(buf[3], 0);
+        // bitmap
+        assert_eq!(buf[4], 0b10110001);
+        // metadata
+        assert_eq!(buf[168], 27);
+        assert_eq!(buf[169], 4);
+        assert_eq!(buf[170], 0);
+        // CRC
+        let expected_crc = buf[..170].iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+        assert_eq!(buf[171], expected_crc);
+    }
+
+    #[test]
+    fn encode_decode_roundtrip() {
+        let mut bitmap = [0u8; 118];
+        for (i, b) in bitmap.iter_mut().enumerate() {
+            *b = (i as u8).wrapping_mul(7);
+        }
+        let original = SleepScreen {
+            active: true,
+            clock_x: 12,
+            clock_y: 7,
+            name_bottom: true,
+            bitmap: Box::new(bitmap),
+        };
+        let encoded = encode_sleep_screen(&original);
+        let decoded = decode_sleep_screen(&encoded).unwrap();
+        assert!(decoded.active);
+        assert_eq!(decoded.clock_x, 12);
+        assert_eq!(decoded.clock_y, 7);
+        assert!(decoded.name_bottom);
+        assert_eq!(*decoded.bitmap, bitmap);
+    }
+
+    // -----------------------------------------------------------------------
+    // PNG round-trip: sleep_screen_to_png → sleep_screen_from_png
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn png_roundtrip() {
+        let mut bitmap = [0u8; 118];
+        bitmap[0] = 0b10101010;
+        bitmap[60] = 0b11001100;
+        let original = SleepScreen {
+            active: true,
+            clock_x: 27,
+            clock_y: 4,
+            name_bottom: false,
+            bitmap: Box::new(bitmap),
+        };
+
+        let mut buf = Vec::new();
+        sleep_screen_to_png(&original, &mut buf).unwrap();
+
+        let cursor = Cursor::new(buf);
+        let decoded = sleep_screen_from_png(cursor).unwrap();
+
+        assert!(decoded.active);
+        assert_eq!(decoded.clock_x, 27);
+        assert_eq!(decoded.clock_y, 4);
+        assert!(!decoded.name_bottom);
+        assert_eq!(*decoded.bitmap, bitmap);
+    }
+
+    #[test]
+    fn png_roundtrip_name_bottom() {
+        let original = SleepScreen {
+            active: true,
+            clock_x: 5,
+            clock_y: 10,
+            name_bottom: true,
+            bitmap: Box::new([0u8; 118]),
+        };
+        let mut buf = Vec::new();
+        sleep_screen_to_png(&original, &mut buf).unwrap();
+        let decoded = sleep_screen_from_png(Cursor::new(buf)).unwrap();
+        assert!(decoded.name_bottom);
+    }
 }
