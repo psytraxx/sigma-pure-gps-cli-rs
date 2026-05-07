@@ -17,6 +17,8 @@ cargo run -- download-tracks-raw ./out    # download tracks with raw barometric 
 cargo run -- get-settings                 # read device settings
 cargo run -- get-totals                   # read cumulative totals
 cargo run -- agps-date                    # show AGPS data date on device
+cargo run -- get-waypoint                 # read point navigation waypoint from device
+cargo run -- set-waypoint --name X --lat 47.0 --lon 8.0  # write waypoint
 cargo run -- -v update                    # verbose (debug logging)
 cargo clippy                              # lint
 cargo test                                # run tests
@@ -58,6 +60,16 @@ Each new feature or fix must be implemented on its own branch and submitted as i
 ```bash
 git checkout -b feat/my-feature-name
 ```
+
+## Testing without hardware
+
+All new protocol functions, decoders, and encoders **must** have unit tests that run without a real device. Use the `MockPort` pattern already established in `src/protocol/mod.rs` — it accepts a pre-canned byte sequence as device responses and captures what was sent. Decoder/encoder functions in `src/decoder.rs` need no mock at all; test them with hand-crafted byte arrays.
+
+Cover at minimum:
+- Correct encoding and round-trip (encode → decode returns original values)
+- Alternate hemispheres or sign variants (e.g. southern latitude, western longitude)
+- Checksum/CRC rejection (flip a byte, assert `is_err()`)
+- Protocol-layer patch: after calling `set_*`, assert the correct bytes land at the correct EEPROM offsets and the update-flag bytes at offset 80 are correct
 
 ## After every code change
 
