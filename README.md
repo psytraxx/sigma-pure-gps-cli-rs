@@ -161,6 +161,53 @@ Pass `-v` (or `--verbose`) before any subcommand to enable debug output:
 sigma-pure-gps-cli -v update
 ```
 
+## Device internals
+
+### Suspected hardware
+
+| Component | Best guess | Evidence |
+|-----------|-----------|----------|
+| MCU | STM32F1xx / STM32F2xx | DFU mode command in firmware update flow; USB CDC-ACM; era (2013) |
+| GPS | u-blox MAX-7C or similar | AssistNow API token in source; 32 760 byte AGPS payload matches u-blox sizing exactly |
+| Barometer | Bosch BMP180 or MEAS MS5611 | Sea-level pressure field encoded as `(hPa − 900) × 10`; 1 m altitude resolution in logs |
+| SPI NOR flash | 2 MB (e.g. Winbond W25Q16 / Macronix MX25L1606) | Top log address `0x1FE000`; AGPS region starts at `0x1000` |
+| EEPROM | 1 KB (internal STM32 or small I²C) | Exactly 1024-byte config layout |
+| NFC | Dual-interface memory (ST M24LR or NXP NT3H) | NFC path exposes identical read/write commands to both EEPROM and flash |
+
+### Memory map
+
+```
+0x000000   (    0)  EEPROM — 1 KB configuration block
+0x001000   ( 4096)  AGPS data — up to 32 760 bytes (u-blox AssistNow offline)
+                    ... gap ...
+0x1FE000   (≈2 MB)  Log header index — 65 bytes per activity, grows downward
+                    Track data — lower flash addresses, referenced by start/stop pairs in log headers
+```
+
+### EEPROM layout (1024 bytes)
+
+| Offset | Size | Content |
+|--------|------|---------|
+| 0 | 6 | Serial number (48-bit LE integer) |
+| 64 | 6 | Unit type byte + firmware version |
+| 80 | 4 | Update flags (tell firmware which block changed) |
+| 96 | 172 | Sleep screen / watch face bitmap + metadata |
+| 272 | 32 | Settings (timezone, language, units, altitudes, name…) |
+| 304 | 20 | Cumulative totals (distance, time, calories, climb) |
+| 336 | 27 | Point navigation waypoint |
+
+### Firmware update
+
+The MCU is put into **DFU (Device Firmware Upgrade) mode** over the same USB CDC-ACM connection before flashing. Firmware files use the `.GHX` extension (Sigma-proprietary container). The update sequence is: start-update → enter DFU → erase → stream 77-byte blocks → finalize.
+
+### AGPS
+
+The device uses u-blox **AssistNow Offline** (`period=2;resolution=1` — 2-week orbital predictions at 1-hour resolution). The CLI downloads this from `offline-live1.services.u-blox.com` using your token and writes it to flash at address `0x1000`.
+
+### NFC
+
+The original Sigma Data Center app also supported NFC sync (via a docking station with an NFC reader). The NFC path exposes the same EEPROM and flash regions through a dual-interface memory chip, using a custom block-addressed protocol with 18 ms inter-block delays (`FIFO_BIT = 1`, `READ_DELAY = 18 ms`). This CLI does not implement NFC — USB only.
+
 ## Development
 
 ### Running tests
