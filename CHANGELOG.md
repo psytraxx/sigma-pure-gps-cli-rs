@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.4.0]
 
 ### Fixed
 - Replaced always-zero expression `(42195 >> 16 & 0xFF)` in test helper with literal `0u8`
