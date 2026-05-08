@@ -550,6 +550,111 @@ fn verify_checksum(data: &[u8], seed: u8) -> Result<()> {
     Ok(())
 }
 
+/// A named GPS waypoint stored in the device's point navigation slot.
+///
+/// Both text fields are max 9 ASCII characters; the device uses them as the two-line name shown
+/// on the navigation screen.  Coordinates are in decimal degrees (WGS-84).
+pub struct Waypoint {
+    pub text1: String,
+    pub text2: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+/// Encodes a `Waypoint` into the 27-byte EEPROM payload.
+///
+/// Layout (ported from `Gps10Decoder.encodePointNavigation` in the ActionScript source):
+///   bytes  0-8  : text1, ASCII, null-padded (max 9 chars)
+///   bytes  9-17 : text2, ASCII, null-padded (max 9 chars)
+///   byte  18    : lon degrees (0–179)
+///   bytes 19-20 : lon minutes lower 16 bits (scaled ×10000, little-endian)
+///   byte  21    : lon minutes upper 4 bits | (0x10 if West)
+///   byte  22    : (lat_degrees & 0x7F) << 1 | (0 if South, 1 if North)
+///   bytes 23-24 : lat minutes lower 16 bits (scaled ×10000, little-endian)
+///   byte  25    : lat minutes upper 4 bits
+///   byte  26    : CRC (seed=1) over bytes 0-25
+pub fn encode_waypoint(wp: &Waypoint) -> anyhow::Result<[u8; 27]> {
+    let mut buf = [0u8; 27];
+
+    for (i, c) in wp.text1.chars().take(9).enumerate() {
+        buf[i] = c as u8;
+    }
+    for (i, c) in wp.text2.chars().take(9).enumerate() {
+        buf[9 + i] = c as u8;
+    }
+
+    let lon_abs = wp.lon.abs();
+    let lon_deg = lon_abs.trunc() as u32;
+    let lon_min = ((lon_abs - lon_deg as f64) * 60.0 * 10000.0).round() as u32;
+    let west = wp.lon < 0.0;
+
+    buf[18] = lon_deg as u8;
+    buf[19] = (lon_min & 0xFF) as u8;
+    buf[20] = (lon_min >> 8 & 0xFF) as u8;
+    buf[21] = (lon_min >> 16 & 0x0F) as u8 | if west { 0x10 } else { 0 };
+
+    let lat_abs = wp.lat.abs();
+    let lat_deg = lat_abs.trunc() as u32;
+    let lat_min = ((lat_abs - lat_deg as f64) * 60.0 * 10000.0).round() as u32;
+    let north = wp.lat >= 0.0;
+
+    buf[22] = (if north { 1u8 } else { 0u8 }) | ((lat_deg as u8 & 0x7F) << 1);
+    buf[23] = (lat_min & 0xFF) as u8;
+    buf[24] = (lat_min >> 8 & 0xFF) as u8;
+    buf[25] = (lat_min >> 16 & 0x0F) as u8;
+
+    let crc = buf[..26].iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+    buf[26] = crc;
+
+    Ok(buf)
+}
+
+/// Decodes a 27-byte EEPROM payload into a `Waypoint`.
+/// Returns an error if the checksum does not match.
+pub fn decode_waypoint(data: &[u8]) -> anyhow::Result<Waypoint> {
+    if data.len() < 27 {
+        anyhow::bail!("Waypoint data too short: {} bytes", data.len());
+    }
+
+    let expected = data[26];
+    let computed = data[..26].iter().fold(1u8, |acc, &b| acc.wrapping_add(b));
+    if computed != expected {
+        anyhow::bail!("Waypoint checksum mismatch: computed {computed:#04x}, got {expected:#04x}");
+    }
+
+    let text1 = data[..9]
+        .iter()
+        .take_while(|&&b| b != 0)
+        .map(|&b| b as char)
+        .collect();
+    let text2 = data[9..18]
+        .iter()
+        .take_while(|&&b| b != 0)
+        .map(|&b| b as char)
+        .collect();
+
+    let lon_deg = data[18] as f64;
+    let lon_min_raw =
+        (data[19] as u32) | ((data[20] as u32) << 8) | (((data[21] & 0x0F) as u32) << 16);
+    let lon_min = lon_min_raw as f64 / 10000.0;
+    let west = (data[21] & 0x10) != 0;
+    let lon = (lon_deg + lon_min / 60.0) * if west { -1.0 } else { 1.0 };
+
+    let north = (data[22] & 0x01) != 0;
+    let lat_deg = ((data[22] >> 1) & 0x7F) as f64;
+    let lat_min_raw =
+        (data[23] as u32) | ((data[24] as u32) << 8) | (((data[25] & 0x0F) as u32) << 16);
+    let lat_min = lat_min_raw as f64 / 10000.0;
+    let lat = (lat_deg + lat_min / 60.0) * if north { 1.0 } else { -1.0 };
+
+    Ok(Waypoint {
+        text1,
+        text2,
+        lat,
+        lon,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Helpers shared across tests
 // ---------------------------------------------------------------------------
@@ -887,7 +992,13 @@ mod tests {
         // temp_raw = 35 → 35 - 10 = 25 °C
         let temp: u8 = 35;
 
-        let entry = make_normal_entry((47, lat_min, true), (8, lon_min, true), alt_raw, speed, temp);
+        let entry = make_normal_entry(
+            (47, lat_min, true),
+            (8, lon_min, true),
+            alt_raw,
+            speed,
+            temp,
+        );
         let points = decode_log_data(&entry);
         assert_eq!(points.len(), 1);
         let pt = &points[0];
@@ -1133,5 +1244,50 @@ mod tests {
         sleep_screen_to_png(&original, &mut buf).unwrap();
         let decoded = sleep_screen_from_png(Cursor::new(buf)).unwrap();
         assert!(decoded.name_bottom);
+    }
+
+    #[test]
+    fn encode_decode_waypoint_roundtrip() {
+        let wp = Waypoint {
+            text1: "Home".to_string(),
+            text2: "Base".to_string(),
+            lat: 47.376_888,
+            lon: 8.541_694,
+        };
+        let encoded = encode_waypoint(&wp).unwrap();
+        let decoded = decode_waypoint(&encoded).unwrap();
+        assert_eq!(decoded.text1, "Home");
+        assert_eq!(decoded.text2, "Base");
+        assert!((decoded.lat - wp.lat).abs() < 1e-5);
+        assert!((decoded.lon - wp.lon).abs() < 1e-5);
+    }
+
+    #[test]
+    fn encode_decode_waypoint_southern_western() {
+        let wp = Waypoint {
+            text1: "SWPoint".to_string(),
+            text2: "".to_string(),
+            lat: -33.868_820,
+            lon: -70.678_730,
+        };
+        let encoded = encode_waypoint(&wp).unwrap();
+        let decoded = decode_waypoint(&encoded).unwrap();
+        assert!(decoded.lat < 0.0);
+        assert!(decoded.lon < 0.0);
+        assert!((decoded.lat - wp.lat).abs() < 1e-5);
+        assert!((decoded.lon - wp.lon).abs() < 1e-5);
+    }
+
+    #[test]
+    fn decode_waypoint_bad_checksum_fails() {
+        let wp = Waypoint {
+            text1: "Test".to_string(),
+            text2: "".to_string(),
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let mut encoded = encode_waypoint(&wp).unwrap();
+        encoded[26] ^= 0xFF;
+        assert!(decode_waypoint(&encoded).is_err());
     }
 }

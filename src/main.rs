@@ -79,6 +79,23 @@ enum Command {
         #[arg(long)]
         alt2: Option<i32>,
     },
+    /// Read the point navigation (waypoint) stored on the device
+    GetWaypoint,
+    /// Write a named GPS waypoint (point navigation) to the device
+    SetWaypoint {
+        /// First name line shown on the device (max 9 characters)
+        #[arg(long)]
+        name: String,
+        /// Second label line (max 9 characters, optional)
+        #[arg(long, default_value = "")]
+        label: String,
+        /// Latitude in decimal degrees (negative = South)
+        #[arg(long)]
+        lat: f64,
+        /// Longitude in decimal degrees (negative = West)
+        #[arg(long)]
+        lon: f64,
+    },
 }
 
 #[tokio::main]
@@ -120,5 +137,12 @@ async fn main() -> Result<()> {
         Command::SetHomeAltitude { alt1, alt2 } => {
             commands::set_home_altitude::run(cli.port, alt1, alt2).await
         }
+        Command::GetWaypoint => commands::get_waypoint::run(cli.port).await,
+        Command::SetWaypoint {
+            name,
+            label,
+            lat,
+            lon,
+        } => commands::set_waypoint::run(cli.port, name, label, lat, lon).await,
     }
 }

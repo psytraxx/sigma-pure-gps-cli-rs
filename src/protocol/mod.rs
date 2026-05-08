@@ -273,6 +273,43 @@ pub fn set_home_altitude(
     write_eeprom(port, &eeprom)
 }
 
+/// Reads the 27-byte point navigation (waypoint) block from EEPROM offset 336.
+/// (See Gps10Handler.as: POSITION_POINT_NAVIGATION=336, LENGTH_POINT_NAVIGATION=27)
+pub fn get_waypoint(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
+    const WAYPOINT_OFFSET: usize = 336;
+    const WAYPOINT_SIZE: usize = 27;
+    let eeprom = load_eeprom(port)?;
+    eeprom
+        .get(WAYPOINT_OFFSET..WAYPOINT_OFFSET + WAYPOINT_SIZE)
+        .map(|s| s.to_vec())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "EEPROM too short for waypoint block ({} bytes)",
+                eeprom.len()
+            )
+        })
+}
+
+/// Writes a 27-byte encoded point navigation payload to EEPROM offset 336 and triggers
+/// UPDATE_FLAG_POINT_NAVIGATION (flag=128).
+///
+/// Flag bytes derived from generateUpdateFlagData(128) with default state [0,2,0,3]:
+///   byte[0] |= 128 → 128; byte[1] |= 2 → 2; popcount(128)=1 → byte[2]=1;
+///   CRC = (128+2+1+seed_1) & 0xFF = 132 = 0x84.
+///   Result: [0x80, 0x02, 0x01, 0x84] at EEPROM offset 80.
+/// (See Gps10Handler.as writePointNavigation / generateUpdateFlagData)
+pub fn set_waypoint(port: &mut Box<dyn SerialPort>, payload: &[u8; 27]) -> Result<()> {
+    let eeprom_vec = load_eeprom(port)?;
+    let mut eeprom: [u8; 1024] = eeprom_vec
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
+
+    eeprom[336..336 + 27].copy_from_slice(payload);
+    eeprom[80..84].copy_from_slice(&[0x80, 0x02, 0x01, 0x84]);
+
+    write_eeprom(port, &eeprom)
+}
+
 /// Erases all activity log data on the device by writing the TRIP_DATA_RESET update flag.
 ///
 /// Reads the current EEPROM, patches offset 80 with update flags [0, 6, 1, 8]
@@ -765,5 +802,41 @@ mod tests {
         let data_offset = 28;
         let sent_data = &w[data_offset..data_offset + 128];
         assert!(sent_data.iter().all(|&b| b == 0xAA));
+    }
+
+    #[test]
+    fn get_waypoint_returns_correct_slice() {
+        let mut eeprom = [0u8; 1024];
+        eeprom[336] = 0x41; // 'A'
+        eeprom[362] = 0xFF; // last byte of 27-byte block
+        let (mock, _written) = MockPort::new(&eeprom_response(&eeprom));
+        let mut port = mock.into_box();
+        let result = get_waypoint(&mut port).unwrap();
+        assert_eq!(result.len(), 27);
+        assert_eq!(result[0], 0x41);
+        assert_eq!(result[26], 0xFF);
+    }
+
+    #[test]
+    fn set_waypoint_patches_block_and_update_flags() {
+        use crate::decoder::{Waypoint, encode_waypoint};
+        let wp = Waypoint {
+            text1: "Test".to_string(),
+            text2: "".to_string(),
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let payload = encode_waypoint(&wp).unwrap();
+        let orig_eeprom = [0u8; 1024];
+        let mut responses = eeprom_response(&orig_eeprom);
+        responses.extend(write_eeprom_replies());
+        let (mock, written) = MockPort::new(&responses);
+        let mut port = mock.into_box();
+        set_waypoint(&mut port, &payload).unwrap();
+        let w = written.lock().unwrap();
+        let sent =
+            &w[LOAD_THEN_WRITE_EEPROM_DATA_OFFSET..LOAD_THEN_WRITE_EEPROM_DATA_OFFSET + 1024];
+        assert_eq!(&sent[336..336 + 27], &payload);
+        assert_eq!(&sent[80..84], &[0x80, 0x02, 0x01, 0x84]);
     }
 }

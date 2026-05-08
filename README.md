@@ -72,6 +72,8 @@ Commands:
   agps-date           Show the AGPS data date currently stored on the device
   set-home-altitude   Set home altitude 1 and/or 2 on the device (in metres)
   delete-tracks       Permanently erase all activity data from the device
+  get-waypoint        Read the point navigation waypoint stored on the device
+  set-waypoint        Write a named GPS waypoint (point navigation) to the device
   list-ports          List available serial ports with USB VID/PID info
 ```
 
@@ -129,6 +131,26 @@ Uploads a PNG (16×59 px, 1-bit grayscale) to the device. Use `get-sleep-screen`
 sigma-pure-gps-cli set-sleep-screen bitmaps/bike_and_hills.png
 sigma-pure-gps-cli set-sleep-screen my_face.png
 ```
+
+### Waypoint / Point navigation
+
+Read the waypoint currently stored on the device:
+
+```bash
+sigma-pure-gps-cli get-waypoint
+```
+
+Write a named GPS coordinate to the device's single point navigation slot. The device will display a compass arrow and distance to this location during a workout.
+
+```bash
+sigma-pure-gps-cli set-waypoint --name "Summit" --lat 47.3769 --lon 8.5417
+sigma-pure-gps-cli set-waypoint --name "Summit" --label "Zurich" --lat 47.3769 --lon 8.5417
+```
+
+- `--name` — first line shown on the device (max 9 characters)
+- `--label` — second line (optional, max 9 characters)
+- `--lat` — latitude in decimal degrees (negative = South)
+- `--lon` — longitude in decimal degrees (negative = West)
 
 ### Set home altitude
 

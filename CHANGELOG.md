@@ -2,6 +2,12 @@
 
 ## [0.4.0]
 
+### Added
+- `get-waypoint` subcommand — reads the 27-byte point navigation block from EEPROM offset 336 and displays the stored waypoint name, label, latitude, and longitude
+- `set-waypoint` subcommand — encodes a named GPS coordinate (name, label, lat, lon) and writes it to the device's single point navigation slot with `UPDATE_FLAG_POINT_NAVIGATION=128` (`[0x80, 0x02, 0x01, 0x84]` at EEPROM offset 80)
+- `encode_waypoint` / `decode_waypoint` in `src/decoder.rs` — 27-byte EEPROM encode/decode for point navigation; CRC seed=1 over bytes 0–25; coordinates stored as degree + minutes×10000 with direction flags
+- `get_waypoint` / `set_waypoint` in `src/protocol/mod.rs` — EEPROM read/write helpers for the waypoint slot
+
 ### Fixed
 - Replaced always-zero expression `(42195 >> 16 & 0xFF)` in test helper with literal `0u8`
 - Refactored `make_totals_bytes` and `make_normal_entry` test helpers to group related parameters into tuples, eliminating clippy `too_many_arguments` warnings without suppression attributes
