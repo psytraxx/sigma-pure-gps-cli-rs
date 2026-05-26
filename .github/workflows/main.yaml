@@ -12,7 +12,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+  
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,7 +23,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Copy .env example
         run: cp .env.example .env || true
-      - uses: Swatinem/rust-cache@v2
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.10
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: Format  
@@ -32,3 +35,6 @@ jobs:
         run: cargo build --verbose
       - name: Test
         run: cargo test --verbose
+      - name: Run sccache stat for check
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
