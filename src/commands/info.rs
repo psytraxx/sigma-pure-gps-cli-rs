@@ -1,19 +1,21 @@
 use anyhow::Result;
 use tracing::{info, warn};
 
+use crate::{protocol, util};
+
+// info.rs needs the raw load_unit_info response itself (not just the "port is ready" side
+// effect that util::with_device discards), so it keeps its own open+load preamble instead.
 pub async fn run(port_arg: Option<String>) -> Result<()> {
-    let port_name = crate::util::resolve_port(port_arg)?;
+    let port_name = util::resolve_port(port_arg)?;
     info!("Using port: {port_name}");
 
-    crate::util::run_blocking(move || {
-        let mut port = crate::protocol::open_port(&port_name)?;
-        let raw = crate::protocol::load_unit_info(&mut port)?;
+    util::run_blocking(move || {
+        let mut port = protocol::open_port(&port_name)?;
+        let raw = protocol::load_unit_info(&mut port)?;
         print_unit_info(&raw);
         Ok(())
     })
-    .await?;
-
-    Ok(())
+    .await
 }
 
 fn print_unit_info(raw: &[u8]) {

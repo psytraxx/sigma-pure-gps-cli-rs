@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::io::{self, Write};
-use tracing::info;
+
+use crate::{protocol, util};
 
 pub async fn run(port_arg: Option<String>) -> Result<()> {
     print!("This will permanently erase all activity data on the device. Continue? [y/N] ");
@@ -13,17 +14,10 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let port_name = crate::util::resolve_port(port_arg)?;
-    info!("Using port: {port_name}");
-
-    crate::util::run_blocking(move || {
-        let mut port = crate::protocol::open_port(&port_name)?;
-        crate::protocol::load_unit_info(&mut port)?;
-        crate::protocol::delete_tracks_memory(&mut port)?;
+    util::with_device(port_arg, |port| {
+        protocol::delete_tracks_memory(port)?;
         println!("Activity memory erased.");
         Ok(())
     })
-    .await?;
-
-    Ok(())
+    .await
 }

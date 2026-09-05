@@ -23,6 +23,16 @@
   documented once, instead of duplicated per call site; values are unchanged, cross-checked
   against `Gps10Handler.as`
 - `tokio` feature set narrowed from `full` to `rt-multi-thread`, `macros`, `fs` — the only features actually used
+- Added `util::with_device` — the shared resolve-port → log → open → `load_unit_info`
+  preamble used by most subcommands, extracted from 10 command modules that repeated it
+  verbatim (`agps_date`, `delete_tracks`, `get_settings`, `get_sleep_screen`, `get_totals`,
+  `get_waypoint`, `set_home_altitude`, `set_sleep_screen`, `set_waypoint`); each now passes
+  a closure with just its device logic. `info` and `update` keep their own preamble since
+  they need the raw `load_unit_info` response or extra setup before opening the port.
+- Converted command modules from fully-qualified `crate::util::`/`crate::protocol::`/
+  `crate::decoder::` paths to `use` imports
+- `download-tracks-raw` now delegates to `download-tracks`'s `run_with_options(..., correct_elevation: false)`
+  instead of duplicating the create-dir + write-GPX loop
 
 ## [0.4.0]
 

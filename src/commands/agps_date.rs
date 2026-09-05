@@ -1,20 +1,14 @@
 use anyhow::Result;
-use tracing::info;
+
+use crate::{decoder, protocol, util};
 
 pub async fn run(port_arg: Option<String>) -> Result<()> {
-    let port_name = crate::util::resolve_port(port_arg)?;
-    info!("Using port: {port_name}");
-
-    crate::util::run_blocking(move || {
-        let mut port = crate::protocol::open_port(&port_name)?;
-        crate::protocol::load_unit_info(&mut port)?;
-        crate::protocol::load_eeprom(&mut port)?;
-        let data = crate::protocol::get_agps_flash_header(&mut port)?;
-        let date = crate::decoder::decode_agps_date(&data)?;
+    util::with_device(port_arg, |port| {
+        protocol::load_eeprom(port)?;
+        let data = protocol::get_agps_flash_header(port)?;
+        let date = decoder::decode_agps_date(&data)?;
         println!("AGPS data date: {}", date.format("%Y-%m-%d"));
         Ok(())
     })
-    .await?;
-
-    Ok(())
+    .await
 }

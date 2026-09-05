@@ -1,15 +1,11 @@
 use anyhow::Result;
-use tracing::info;
+
+use crate::{decoder, protocol, util};
 
 pub async fn run(port_arg: Option<String>) -> Result<()> {
-    let port_name = crate::util::resolve_port(port_arg)?;
-    info!("Using port: {port_name}");
-
-    crate::util::run_blocking(move || {
-        let mut port = crate::protocol::open_port(&port_name)?;
-        crate::protocol::load_unit_info(&mut port)?;
-        let raw = crate::protocol::get_settings(&mut port)?;
-        let s = crate::decoder::decode_settings(&raw)?;
+    util::with_device(port_arg, |port| {
+        let raw = protocol::get_settings(port)?;
+        let s = decoder::decode_settings(&raw)?;
 
         println!("Language:          {}", s.language);
         println!("Clock:             {}-hour", s.clock_mode);
@@ -45,9 +41,7 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
             println!("Name:              {}", s.name);
         }
 
-        Ok::<_, anyhow::Error>(())
+        Ok(())
     })
-    .await?;
-
-    Ok(())
+    .await
 }
