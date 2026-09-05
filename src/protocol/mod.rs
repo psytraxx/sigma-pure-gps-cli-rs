@@ -42,6 +42,16 @@ const CMD_SEND_EEPROM: &[u8] = &[
     0x52, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x62,
 ];
 
+// Update-flag bytes written to EEPROM offset 80 to tell the device which block changed.
+// Derived from generateUpdateFlagData(flag) in Gps10Handler.as, starting from the default
+// state [0, 2, 0, 3]: for flags 8/16/32/64/128, byte[0] |= flag; for flag 4
+// (TRIP_DATA_RESET) byte[1] |= flag instead. byte[1] |= 2 always. byte[2] = popcount of
+// byte[0]'s bits, +1 extra for flag 4. byte[3] = CRC = fold-add(byte[0..3], seed=1) & 0xFF.
+const UPDATE_FLAGS_SLEEP_SCREEN: [u8; 4] = [0x08, 0x02, 0x01, 0x0C]; // UPDATE_FLAG_SLEEPSCREEN=8
+const UPDATE_FLAGS_SETTINGS: [u8; 4] = [0x10, 0x02, 0x01, 0x14]; // UPDATE_FLAG_SETTINGS=16
+const UPDATE_FLAGS_WAYPOINT: [u8; 4] = [0x80, 0x02, 0x01, 0x84]; // UPDATE_FLAG_POINT_NAVIGATION=128
+const UPDATE_FLAGS_TRIP_RESET: [u8; 4] = [0x00, 0x06, 0x01, 0x08]; // UPDATE_FLAG_TRIP_DATA_RESET=4
+
 /// Builds a flash-read command for the given start address and length.
 fn build_flash_read_cmd(start: u32, len: u32) -> Vec<u8> {
     let mut cmd = vec![
@@ -142,22 +152,12 @@ pub fn get_sleep_screen(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
 
 /// Writes a 172-byte encoded sleep screen payload to EEPROM offset 96 and triggers
 /// UPDATE_FLAG_SLEEPSCREEN (flag=8).
-///
-/// Flag bytes derived from generateUpdateFlagData(8) with default state [0,2,0,3]:
-///   byte[0] |= 8 → 8; byte[1] |= 2 → 2; popcount(8)=1 → byte[2]=1;
-///   CRC = (8+2+1+seed_1) & 0xFF = 12.
-///   Result: [0x08, 0x02, 0x01, 0x0C] at EEPROM offset 80.
 /// (See Gps10Handler.as writeUnitSleepScreen / generateUpdateFlagData)
 pub fn set_sleep_screen(port: &mut Box<dyn SerialPort>, payload: &[u8; 172]) -> Result<()> {
-    let eeprom_vec = load_eeprom(port)?;
-    let mut eeprom: [u8; 1024] = eeprom_vec
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
-
-    eeprom[96..96 + 172].copy_from_slice(payload);
-    eeprom[80..84].copy_from_slice(&[0x08, 0x02, 0x01, 0x0C]);
-
-    write_eeprom(port, &eeprom)
+    modify_eeprom(port, |eeprom| {
+        eeprom[96..96 + 172].copy_from_slice(payload);
+        eeprom[80..84].copy_from_slice(&UPDATE_FLAGS_SLEEP_SCREEN);
+    })
 }
 
 /// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).
@@ -233,44 +233,55 @@ pub fn write_eeprom(port: &mut Box<dyn SerialPort>, eeprom: &[u8; 1024]) -> Resu
     Ok(())
 }
 
-/// Writes home altitude 1 and/or 2 into the settings block (EEPROM offset 272) and uploads
-/// the full EEPROM.
+/// Reads the full EEPROM image, applies `patch` to it, and writes it back.
 ///
-/// Encoding from encodeSettings in Gps10Decoder.as: raw = altitude_m * 10 + 10000 (16-bit LE).
-/// Update flag UPDATE_FLAG_SETTINGS=16 → flags [16, 2, 1, 20] at EEPROM offset 80.
-pub fn set_home_altitude(
+/// Shared by every command that patches a single EEPROM block (sleep screen, settings,
+/// waypoint, trip-data-reset flags): `load_eeprom` → fixed-size buffer → `patch` → `write_eeprom`.
+fn modify_eeprom(
     port: &mut Box<dyn SerialPort>,
-    alt1_m: Option<i32>,
-    alt2_m: Option<i32>,
+    patch: impl FnOnce(&mut [u8; 1024]),
 ) -> Result<()> {
     let eeprom_vec = load_eeprom(port)?;
     let mut eeprom: [u8; 1024] = eeprom_vec
         .try_into()
         .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
 
-    let settings = &mut eeprom[272..272 + 32];
-
-    if let Some(m) = alt1_m {
-        let raw = (m * 10 + 10000) as u16;
-        settings[7] = (raw & 0xFF) as u8;
-        settings[8] = (raw >> 8) as u8;
-    }
-    if let Some(m) = alt2_m {
-        let raw = (m * 10 + 10000) as u16;
-        settings[9] = (raw & 0xFF) as u8;
-        settings[10] = (raw >> 8) as u8;
-    }
-
-    // Recalculate settings block checksum (seed=1, covers bytes 0..30).
-    let crc = settings[..31]
-        .iter()
-        .fold(1u8, |acc, &b| acc.wrapping_add(b));
-    eeprom[272 + 31] = crc;
-
-    // UPDATE_FLAG_SETTINGS=16: generateUpdateFlagData(16) → [16, 2, 1, 20].
-    eeprom[80..84].copy_from_slice(&[0x10, 0x02, 0x01, 0x14]);
+    patch(&mut eeprom);
 
     write_eeprom(port, &eeprom)
+}
+
+/// Writes home altitude 1 and/or 2 into the settings block (EEPROM offset 272) and uploads
+/// the full EEPROM.
+///
+/// Encoding from encodeSettings in Gps10Decoder.as: raw = altitude_m * 10 + 10000 (16-bit LE).
+pub fn set_home_altitude(
+    port: &mut Box<dyn SerialPort>,
+    alt1_m: Option<i32>,
+    alt2_m: Option<i32>,
+) -> Result<()> {
+    modify_eeprom(port, |eeprom| {
+        let settings = &mut eeprom[272..272 + 32];
+
+        if let Some(m) = alt1_m {
+            let raw = (m * 10 + 10000) as u16;
+            settings[7] = (raw & 0xFF) as u8;
+            settings[8] = (raw >> 8) as u8;
+        }
+        if let Some(m) = alt2_m {
+            let raw = (m * 10 + 10000) as u16;
+            settings[9] = (raw & 0xFF) as u8;
+            settings[10] = (raw >> 8) as u8;
+        }
+
+        // Recalculate settings block checksum (seed=1, covers bytes 0..30).
+        let crc = settings[..31]
+            .iter()
+            .fold(1u8, |acc, &b| acc.wrapping_add(b));
+        eeprom[272 + 31] = crc;
+
+        eeprom[80..84].copy_from_slice(&UPDATE_FLAGS_SETTINGS);
+    })
 }
 
 /// Reads the 27-byte point navigation (waypoint) block from EEPROM offset 336.
@@ -292,42 +303,21 @@ pub fn get_waypoint(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
 
 /// Writes a 27-byte encoded point navigation payload to EEPROM offset 336 and triggers
 /// UPDATE_FLAG_POINT_NAVIGATION (flag=128).
-///
-/// Flag bytes derived from generateUpdateFlagData(128) with default state [0,2,0,3]:
-///   byte[0] |= 128 → 128; byte[1] |= 2 → 2; popcount(128)=1 → byte[2]=1;
-///   CRC = (128+2+1+seed_1) & 0xFF = 132 = 0x84.
-///   Result: [0x80, 0x02, 0x01, 0x84] at EEPROM offset 80.
 /// (See Gps10Handler.as writePointNavigation / generateUpdateFlagData)
 pub fn set_waypoint(port: &mut Box<dyn SerialPort>, payload: &[u8; 27]) -> Result<()> {
-    let eeprom_vec = load_eeprom(port)?;
-    let mut eeprom: [u8; 1024] = eeprom_vec
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
-
-    eeprom[336..336 + 27].copy_from_slice(payload);
-    eeprom[80..84].copy_from_slice(&[0x80, 0x02, 0x01, 0x84]);
-
-    write_eeprom(port, &eeprom)
+    modify_eeprom(port, |eeprom| {
+        eeprom[336..336 + 27].copy_from_slice(payload);
+        eeprom[80..84].copy_from_slice(&UPDATE_FLAGS_WAYPOINT);
+    })
 }
 
-/// Erases all activity log data on the device by writing the TRIP_DATA_RESET update flag.
-///
-/// Reads the current EEPROM, patches offset 80 with update flags [0, 6, 1, 8]
-/// (UPDATE_FLAG_TRIP_DATA_RESET=4, per generateUpdateFlagData in Gps10Handler.as), then
-/// writes the full 1024-byte image back.
+/// Erases all activity log data on the device by writing the TRIP_DATA_RESET update flag
+/// (UPDATE_FLAG_TRIP_DATA_RESET=4, per generateUpdateFlagData in Gps10Handler.as) and
+/// uploading the full 1024-byte EEPROM image.
 pub fn delete_tracks_memory(port: &mut Box<dyn SerialPort>) -> Result<()> {
-    let eeprom_vec = load_eeprom(port)?;
-    let mut eeprom: [u8; 1024] = eeprom_vec
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("EEPROM read returned unexpected length"))?;
-
-    // UPDATE_FLAGS_DEFAULT_DATA = [0, 2, 0, 3]; applying flag 4 (TRIP_DATA_RESET):
-    //   byte[1] |= 4 → 6, byte[1] |= 2 → 6 (already set), bit-count of byte[0]=0 plus 1 for
-    //   flag 4 → byte[2]=1, CRC = (0+6+1+seed_1) & 0xFF = 8.
-    let update_flags: [u8; 4] = [0x00, 0x06, 0x01, 0x08];
-    eeprom[80..84].copy_from_slice(&update_flags);
-
-    write_eeprom(port, &eeprom)
+    modify_eeprom(port, |eeprom| {
+        eeprom[80..84].copy_from_slice(&UPDATE_FLAGS_TRIP_RESET);
+    })
 }
 
 pub struct LogHeaderMeta {

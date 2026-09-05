@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- `src/protocol/mod.rs`: extracted a private `modify_eeprom` helper (load → patch → write)
+  shared by `set_sleep_screen`, `set_home_altitude`, `set_waypoint`, and
+  `delete_tracks_memory`, which previously repeated the identical read-modify-write
+  boilerplate (and the same error message) four times
+- Named the four `[u8; 4]` update-flag byte arrays written to EEPROM offset 80
+  (`UPDATE_FLAGS_SLEEP_SCREEN`, `UPDATE_FLAGS_SETTINGS`, `UPDATE_FLAGS_WAYPOINT`,
+  `UPDATE_FLAGS_TRIP_RESET`) with their shared `generateUpdateFlagData` derivation
+  documented once, instead of duplicated per call site; values are unchanged, cross-checked
+  against `Gps10Handler.as`
+
 ## [0.4.0]
 
 ### Added
