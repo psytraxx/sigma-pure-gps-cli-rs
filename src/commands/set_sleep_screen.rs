@@ -1,22 +1,18 @@
 use anyhow::Result;
 use std::fs::File;
 use std::io::BufReader;
-use tracing::info;
+
+use crate::{decoder, protocol, util};
 
 pub async fn run(port_arg: Option<String>, input: &str) -> Result<()> {
-    let port_name = crate::util::resolve_port(port_arg)?;
-    info!("Using port: {port_name}");
-
     let input = input.to_string();
-    crate::util::run_blocking(move || {
+    util::with_device(port_arg, move |port| {
         let file = File::open(&input)?;
         let reader = BufReader::new(file);
-        let screen = crate::decoder::sleep_screen_from_png(reader)?;
-        let payload = crate::decoder::encode_sleep_screen(&screen);
+        let screen = decoder::sleep_screen_from_png(reader)?;
+        let payload = decoder::encode_sleep_screen(&screen);
 
-        let mut port = crate::protocol::open_port(&port_name)?;
-        crate::protocol::load_unit_info(&mut port)?;
-        crate::protocol::set_sleep_screen(&mut port, &payload)?;
+        protocol::set_sleep_screen(port, &payload)?;
 
         println!("Sleep screen uploaded from: {input}");
         println!(
@@ -27,9 +23,7 @@ pub async fn run(port_arg: Option<String>, input: &str) -> Result<()> {
             "  Name position:  {}",
             if screen.name_bottom { "bottom" } else { "top" }
         );
-        Ok::<_, anyhow::Error>(())
+        Ok(())
     })
-    .await?;
-
-    Ok(())
+    .await
 }

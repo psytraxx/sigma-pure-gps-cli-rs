@@ -1,15 +1,11 @@
 use anyhow::Result;
-use tracing::info;
+
+use crate::{decoder, protocol, util};
 
 pub async fn run(port_arg: Option<String>) -> Result<()> {
-    let port_name = crate::util::resolve_port(port_arg)?;
-    info!("Using port: {port_name}");
-
-    crate::util::run_blocking(move || {
-        let mut port = crate::protocol::open_port(&port_name)?;
-        crate::protocol::load_unit_info(&mut port)?;
-        let raw = crate::protocol::get_totals(&mut port)?;
-        let t = crate::decoder::decode_totals(&raw)?;
+    util::with_device(port_arg, |port| {
+        let raw = protocol::get_totals(port)?;
+        let t = decoder::decode_totals(&raw)?;
 
         let total_secs = t.total_training_time_ms / 1000;
         let h = total_secs / 3600;
@@ -35,11 +31,9 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
             println!("Totals reset:      {}", d.format("%Y-%m-%d"));
         }
 
-        Ok::<_, anyhow::Error>(())
+        Ok(())
     })
-    .await?;
-
-    Ok(())
+    .await
 }
 
 /// Format a float with dot-thousands and comma-decimal, e.g. 19359.28 → "19.359,280"

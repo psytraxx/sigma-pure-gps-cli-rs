@@ -83,11 +83,21 @@ pub fn download_from_device(port_name: &str) -> Result<Vec<Track>> {
 }
 
 pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
+    run_with_options(port_arg, output_dir, true).await
+}
+
+/// Shared by `download-tracks` (`correct_elevation: true`) and `download-tracks-raw`
+/// (`correct_elevation: false`) — everything but the elevation-correction step is identical.
+pub(super) async fn run_with_options(
+    port_arg: Option<String>,
+    output_dir: &str,
+    correct_elevation: bool,
+) -> Result<()> {
     let port_name = crate::util::resolve_port(port_arg)?;
     info!("Using port: {port_name}");
 
     let output_dir = output_dir.to_owned();
-    let tracks = crate::util::run_blocking(move || download_from_device(&port_name)).await?;
+    let mut tracks = crate::util::run_blocking(move || download_from_device(&port_name)).await?;
 
     if tracks.is_empty() {
         return Ok(());
@@ -95,34 +105,37 @@ pub async fn run(port_arg: Option<String>, output_dir: &str) -> Result<()> {
 
     std::fs::create_dir_all(&output_dir)?;
 
-    let client = crate::util::build_http_client()?;
+    if correct_elevation {
+        let client = crate::util::build_http_client()?;
 
-    // Correct elevation for all tracks concurrently — each track is one HTTP request,
-    // so running them in parallel cuts total wait time from N×latency to ~1×latency.
-    let mut join_set: tokio::task::JoinSet<Result<Track>> = tokio::task::JoinSet::new();
-    for mut track in tracks {
-        let client = client.clone();
-        join_set.spawn(async move {
-            info!("  Correcting elevation via Sigma elevation service...");
-            crate::elevation::correct_elevation(&client, &mut track.points).await?;
-            Ok(track)
-        });
-    }
-
-    // Collect in completion order; abort all remaining tasks on first error.
-    let mut corrected: Vec<Track> = Vec::new();
-    while let Some(res) = join_set.join_next().await {
-        match res {
-            Ok(Ok(track)) => corrected.push(track),
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(anyhow::anyhow!("Elevation correction task panicked: {e}")),
+        // Correct elevation for all tracks concurrently — each track is one HTTP request,
+        // so running them in parallel cuts total wait time from N×latency to ~1×latency.
+        let mut join_set: tokio::task::JoinSet<Result<Track>> = tokio::task::JoinSet::new();
+        for mut track in tracks {
+            let client = client.clone();
+            join_set.spawn(async move {
+                info!("  Correcting elevation via Sigma elevation service...");
+                crate::elevation::correct_elevation(&client, &mut track.points).await?;
+                Ok(track)
+            });
         }
+
+        // Collect in completion order; abort all remaining tasks on first error.
+        let mut corrected: Vec<Track> = Vec::new();
+        while let Some(res) = join_set.join_next().await {
+            match res {
+                Ok(Ok(track)) => corrected.push(track),
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(anyhow::anyhow!("Elevation correction task panicked: {e}")),
+            }
+        }
+
+        // Sort by original index so output files are written in track order.
+        corrected.sort_by_key(|t| t.index);
+        tracks = corrected;
     }
 
-    // Sort by original index so output files are written in track order.
-    corrected.sort_by_key(|t| t.index);
-
-    for track in corrected {
+    for track in tracks {
         let meta = crate::gpx::GpxMeta::from(&track.header);
         let filename = crate::gpx::track_filename(&meta, track.index);
         let path = std::path::Path::new(&output_dir).join(&filename);

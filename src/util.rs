@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use chrono::NaiveDate;
-use serialport::SerialPortInfo;
+use serialport::{SerialPort, SerialPortInfo};
 use tokio::task::spawn_blocking;
 use tracing::{debug, info, warn};
 
@@ -130,4 +130,26 @@ pub fn build_http_client() -> Result<reqwest::Client> {
         .user_agent("sigma-pure-gps-cli/0.1")
         .build()
         .context("Failed to build HTTP client")
+}
+
+/// Resolves the port, opens it, loads unit info (required before any other device command),
+/// then runs `f` against the open port — all on Tokio's blocking pool.
+///
+/// This is the shared preamble used by most subcommands: resolve → log → open →
+/// load_unit_info → do the actual work. Commands with extra setup before opening the port
+/// (e.g. `update`, `download-tracks`) call `resolve_port`/`run_blocking` directly instead.
+pub async fn with_device<T, F>(port_arg: Option<String>, f: F) -> Result<T>
+where
+    F: FnOnce(&mut Box<dyn SerialPort>) -> Result<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let port_name = resolve_port(port_arg)?;
+    info!("Using port: {port_name}");
+
+    run_blocking(move || {
+        let mut port = crate::protocol::open_port(&port_name)?;
+        crate::protocol::load_unit_info(&mut port)?;
+        f(&mut port)
+    })
+    .await
 }
