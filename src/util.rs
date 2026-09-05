@@ -54,8 +54,6 @@ const URL_OFFLINE_2: &str = "https://offline-live2.services.u-blox.com/GetOfflin
 
 pub struct AgpsData {
     pub bytes: Vec<u8>,
-    #[allow(dead_code)]
-    pub valid_until: Option<NaiveDate>,
 }
 
 pub async fn download_agps(client: &reqwest::Client) -> Result<AgpsData> {
@@ -72,11 +70,10 @@ pub async fn download_agps(client: &reqwest::Client) -> Result<AgpsData> {
                 .context("Both u-blox AGPS servers failed")?
         }
     };
-    let valid_until = decode_agps_validity_date(&bytes);
-    if let Some(d) = valid_until {
+    if let Some(d) = decode_agps_validity_date(&bytes) {
         info!("AGPS data valid until {d}");
     }
-    Ok(AgpsData { bytes, valid_until })
+    Ok(AgpsData { bytes })
 }
 
 async fn try_download_agps(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
