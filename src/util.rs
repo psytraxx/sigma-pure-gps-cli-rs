@@ -153,3 +153,67 @@ where
     })
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn usb_port(port_name: &str, vid: u16) -> SerialPortInfo {
+        SerialPortInfo {
+            port_name: port_name.to_string(),
+            port_type: serialport::SerialPortType::UsbPort(serialport::UsbPortInfo {
+                vid,
+                pid: 0x0001,
+                serial_number: None,
+                manufacturer: None,
+                product: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn is_sigma_port_matches_vid() {
+        let port = usb_port("/dev/ttyUSB0", SIGMA_USB_VID);
+        assert!(is_sigma_port(&port));
+    }
+
+    #[test]
+    fn is_sigma_port_rejects_other_vid() {
+        let port = usb_port("/dev/ttyUSB0", 0x1234);
+        assert!(!is_sigma_port(&port));
+    }
+
+    #[test]
+    fn is_sigma_port_rejects_non_usb() {
+        let port = SerialPortInfo {
+            port_name: "/dev/ttyS0".to_string(),
+            port_type: serialport::SerialPortType::PciPort,
+        };
+        assert!(!is_sigma_port(&port));
+    }
+
+    #[test]
+    fn decode_agps_validity_date_valid() {
+        let mut data = vec![0u8; 13];
+        data[10] = 24; // year 2024
+        data[11] = 3; // March
+        data[12] = 15; // 15th
+        let date = decode_agps_validity_date(&data).unwrap();
+        assert_eq!(date.to_string(), "2024-03-15");
+    }
+
+    #[test]
+    fn decode_agps_validity_date_too_short() {
+        let data = vec![0u8; 5];
+        assert!(decode_agps_validity_date(&data).is_none());
+    }
+
+    #[test]
+    fn decode_agps_validity_date_invalid_calendar_date() {
+        let mut data = vec![0u8; 13];
+        data[10] = 24;
+        data[11] = 2; // February
+        data[12] = 30; // no such day
+        assert!(decode_agps_validity_date(&data).is_none());
+    }
+}

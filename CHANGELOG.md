@@ -34,6 +34,14 @@
 - `download-tracks-raw` now delegates to `download-tracks`'s `run_with_options(..., correct_elevation: false)`
   instead of duplicating the create-dir + write-GPX loop
 
+### Added
+- Unit tests for previously-untested pure logic: `util::is_sigma_port` (VID matching, USB vs.
+  non-USB port types) and `util::decode_agps_validity_date` (valid date, too-short input,
+  invalid calendar date)
+- Unit tests for `decoder::decode_coord` (previously only exercised indirectly through
+  `decode_log_data`): zero minutes, negative hemisphere, fractional minutes, and that the
+  high nibble of the third minutes byte is masked off
+
 ## [0.4.0]
 
 ### Added
