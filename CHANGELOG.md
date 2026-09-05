@@ -8,6 +8,10 @@
 - Header-stride slicing in `download-tracks` (`LOG_HEADER_LEN = 65`, now a named constant in `src/decoder.rs`) no longer panics on a short `get_log_headers` response — logs an error and skips the malformed track instead
 - Checksum failures that truncate a partially corrupt track during log decoding (`decode_log_data`) now emit a `tracing::warn!` with the failing offset and recovered point count instead of failing silently
 
+### Removed
+- `indicatif` and `serde_json` dependencies — neither is referenced anywhere in `src/`; `reqwest`'s `json` feature already covers JSON (de)serialization
+- `AgpsData::valid_until` field — computed and logged at the download call site but never read by any caller (was `#[allow(dead_code)]`)
+
 ### Changed
 - `src/protocol/mod.rs`: extracted a private `modify_eeprom` helper (load → patch → write)
   shared by `set_sleep_screen`, `set_home_altitude`, `set_waypoint`, and
@@ -18,6 +22,7 @@
   `UPDATE_FLAGS_TRIP_RESET`) with their shared `generateUpdateFlagData` derivation
   documented once, instead of duplicated per call site; values are unchanged, cross-checked
   against `Gps10Handler.as`
+- `tokio` feature set narrowed from `full` to `rt-multi-thread`, `macros`, `fs` — the only features actually used
 
 ## [0.4.0]
 
