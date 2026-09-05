@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+- Elevation correction (`download-tracks`) now pairs API response coordinates with track points by request order/index instead of re-formatting floats as string lookup keys, which could silently collapse duplicate coordinates or leave altitude uncorrected on any formatting mismatch; a coordinate-count mismatch now returns an error instead of silently doing nothing
+- `fmt_thousands` in `get-totals` no longer drops the sign for fractional negative values (e.g. `-0.5` rendered as `0,500` instead of `-0,500`); latent bug, totals are never negative in practice
+- Header-stride slicing in `download-tracks` (`LOG_HEADER_LEN = 65`, now a named constant in `src/decoder.rs`) no longer panics on a short `get_log_headers` response — logs an error and skips the malformed track instead
+- Checksum failures that truncate a partially corrupt track during log decoding (`decode_log_data`) now emit a `tracing::warn!` with the failing offset and recovered point count instead of failing silently
+
 ### Changed
 - `src/protocol/mod.rs`: extracted a private `modify_eeprom` helper (load → patch → write)
   shared by `set_sleep_screen`, `set_home_altitude`, `set_waypoint`, and
