@@ -30,7 +30,20 @@ pub fn download_from_device(port_name: &str) -> Result<Vec<Track>> {
     let mut tracks = Vec::new();
 
     for i in 0..meta.count as usize {
-        let h_slice = &header_bytes[i * 65..(i + 1) * 65];
+        let start = i * crate::decoder::LOG_HEADER_LEN;
+        let end = start + crate::decoder::LOG_HEADER_LEN;
+        let h_slice = match header_bytes.get(start..end) {
+            Some(s) => s,
+            None => {
+                error!(
+                    "Track {}: header data too short ({} bytes, expected at least {})",
+                    i + 1,
+                    header_bytes.len(),
+                    end
+                );
+                continue;
+            }
+        };
         let header = match crate::decoder::decode_log_header(h_slice) {
             Ok(h) => h,
             Err(e) => {

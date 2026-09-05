@@ -1,6 +1,10 @@
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use std::io::{BufRead, Seek, Write};
+use tracing::warn;
+
+/// Byte length of one encoded log header entry, as returned by `get_log_headers`.
+pub const LOG_HEADER_LEN: usize = 65;
 
 /// Decodes the AGPS sync date from 13 bytes read at flash offset 0x1000.
 /// Bytes [10]=year-2000, [11]=month (1-based), [12]=day (ported from AgpsLoader.decodeAgpsOfflineDataUploadDate).
@@ -233,7 +237,7 @@ pub struct TrackPoint {
 
 /// Decodes a 65-byte log header slice.
 pub fn decode_log_header(h: &[u8]) -> Result<LogHeader> {
-    if h.len() < 65 {
+    if h.len() < LOG_HEADER_LEN {
         bail!("Log header too short: {} bytes", h.len());
     }
     verify_checksum(h, 1)?;
@@ -305,7 +309,13 @@ pub fn decode_log_data(data: &[u8]) -> Vec<TrackPoint> {
         }
 
         let entry = &data[pos..pos + entry_size];
-        if verify_checksum(entry, 1).is_err() {
+        if let Err(e) = verify_checksum(entry, 1) {
+            warn!(
+                "Log entry checksum failed at offset {pos} (entry {}): {e:#} — \
+                 truncating track, {} point(s) recovered",
+                points.len(),
+                points.len()
+            );
             break;
         }
 
