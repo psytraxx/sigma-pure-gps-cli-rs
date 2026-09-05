@@ -1300,4 +1300,35 @@ mod tests {
         encoded[26] ^= 0xFF;
         assert!(decode_waypoint(&encoded).is_err());
     }
+
+    #[test]
+    fn decode_coord_zero_minutes() {
+        // 47 degrees, 0 minutes, positive
+        assert_eq!(decode_coord(47, 0, 0, 0, true), 47.0);
+    }
+
+    #[test]
+    fn decode_coord_negative_when_not_positive() {
+        assert_eq!(decode_coord(47, 0, 0, 0, false), -47.0);
+    }
+
+    #[test]
+    fn decode_coord_fractional_minutes() {
+        // 30 minutes = 0.5 degrees; minutes value 300000 (0x0493E0) encoded across m0/m1/m2
+        // as minutes/10000 = 30.0000 -> raw = 300000 = 0x0493E0
+        let raw: u32 = 300_000;
+        let m0 = (raw & 0xFF) as u8;
+        let m1 = ((raw >> 8) & 0xFF) as u8;
+        let m2 = ((raw >> 16) & 0x0F) as u8;
+        let result = decode_coord(8, m0, m1, m2, true);
+        assert!((result - 8.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn decode_coord_high_nibble_of_m2_is_masked_off() {
+        // Only the low nibble of m2 contributes; high nibble must be ignored.
+        let a = decode_coord(1, 0, 0, 0x0F, true);
+        let b = decode_coord(1, 0, 0, 0xFF, true);
+        assert_eq!(a, b);
+    }
 }
