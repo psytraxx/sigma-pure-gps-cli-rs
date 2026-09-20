@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+(nothing yet)
+
+## [0.6.1]
+
 ### Fixed
 - `set-home-altitude` now rejects `--alt1`/`--alt2` values outside -1000..=5553 metres
   instead of silently encoding them. The on-device field is a 16-bit
