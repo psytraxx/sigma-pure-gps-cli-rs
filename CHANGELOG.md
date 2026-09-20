@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+(nothing yet)
+
 ## [0.6.0]
 
 ### Security
@@ -62,10 +66,6 @@
 - `fmt_thousands` in `get-totals` no longer drops the sign for fractional negative values (e.g. `-0.5` rendered as `0,500` instead of `-0,500`); latent bug, totals are never negative in practice
 - Header-stride slicing in `download-tracks` (`LOG_HEADER_LEN = 65`, now a named constant in `src/decoder.rs`) no longer panics on a short `get_log_headers` response — logs an error and skips the malformed track instead
 - Checksum failures that truncate a partially corrupt track during log decoding (`decode_log_data`) now emit a `tracing::warn!` with the failing offset and recovered point count instead of failing silently
-
-## Unreleased
-
-(nothing yet)
 
 ## [0.4.0]
 
