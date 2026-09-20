@@ -86,11 +86,21 @@ pub fn open_port(port_name: &str) -> Result<Box<dyn SerialPort>> {
 
 /// Model identifier byte for the Pure GPS (GPS10), at payload offset 64.
 ///
-/// `Gps10Decoder.decodeInitialInformation` switches on `param2[0] - 33` and rejects the
-/// device as "Model not supported" for anything but 0, so 33 (0x21) is the only accepted
-/// model. `param2` is the payload slice starting at 64, and the payload starts after the
-/// 5-byte response header — hence offset 69 in the raw response.
-const UNIT_INFO_MODEL_GPS10: u8 = 0x21;
+/// `Gps10Decoder.decodeInitialInformation` rejects the device as "Model not supported"
+/// unless this byte identifies a GPS10. It decodes the byte as BCD before comparing:
+///
+/// ```actionscript
+/// parseInt((param2[0] as int).toString(16), 10) - 33   // must equal 0
+/// ```
+///
+/// That renders the byte as hex *text* and parses it back as *decimal*, so the literal 33
+/// is decimal-33 and the matching raw byte is `0x33` — confirmed against real hardware.
+/// (`0x21` would be the value if the comparison were a plain byte compare; it is not.)
+/// The same BCD convention is used for the firmware byte at the next offset.
+///
+/// `param2` is the payload slice starting at 64, and the payload starts after the 5-byte
+/// response header — hence offset 69 in the raw response.
+const UNIT_INFO_MODEL_GPS10: u8 = 0x33;
 const UNIT_INFO_MODEL_OFFSET: usize = 69;
 
 /// Sends the unit-info command and returns the raw 76-byte response, after verifying that
@@ -636,11 +646,22 @@ mod tests {
     #[test]
     fn load_unit_info_rejects_unsupported_model() {
         // A device that speaks the protocol correctly but reports a different model.
-        let raw = unit_info_response(0x22);
+        let raw = unit_info_response(0x34);
         let (mock, _written) = MockPort::new(&raw);
         let mut port = mock.into_box();
         let err = load_unit_info(&mut port).unwrap_err().to_string();
         assert!(err.contains("Unsupported device model"), "got: {err}");
+    }
+
+    /// Pins the model byte to the literal value observed on real hardware, so that a
+    /// change to `UNIT_INFO_MODEL_GPS10` fails here rather than silently locking users
+    /// out of their devices. 0x33 is what the BCD decode in
+    /// `decodeInitialInformation` accepts; 0x21 is the plain-byte misreading of it.
+    #[test]
+    fn unit_info_model_byte_matches_hardware() {
+        assert_eq!(UNIT_INFO_MODEL_GPS10, 0x33);
+        assert!(verify_unit_info(&unit_info_response(0x33)).is_ok());
+        assert!(verify_unit_info(&unit_info_response(0x21)).is_err());
     }
 
     #[test]
