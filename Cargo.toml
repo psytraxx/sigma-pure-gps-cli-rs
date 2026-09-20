@@ -1,6 +1,6 @@
 [package]
 name = "sigma-pure-gps-cli"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 authors = ["psytraxx"]
 license = "MIT"
@@ -13,12 +13,12 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "fs"] }
-reqwest = { version = "0.13.4", features = [
+reqwest = { version = "0.13.5", features = [
     "rustls",
     "json",
 ], default-features = false }
-serialport = "4"
-clap = { version = "4", features = ["derive"] }
+serialport = "4.10.1"
+clap = { version = "4.6.7", features = ["derive"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
