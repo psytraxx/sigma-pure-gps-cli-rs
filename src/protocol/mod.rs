@@ -313,6 +313,17 @@ fn modify_eeprom(
 /// the full EEPROM.
 ///
 /// Encoding from encodeSettings in Gps10Decoder.as: raw = altitude_m * 10 + 10000 (16-bit LE).
+/// Encodes an altitude in metres as the 16-bit field used at settings offsets 7/8 and 9/10
+/// (`raw = altitude_m * 10 + 10000`). Saturates to the field's representable range instead
+/// of wrapping, so a value outside `-1000..=5553` m clamps to the nearest valid altitude
+/// rather than silently landing on an unrelated one. Callers are expected to validate and
+/// reject out-of-range input before reaching this point (see `commands::set_home_altitude`);
+/// this is a defense-in-depth backstop, not the primary validation.
+fn encode_altitude(m: i32) -> u16 {
+    let raw = m.saturating_mul(10).saturating_add(10000);
+    raw.clamp(0, u16::MAX as i32) as u16
+}
+
 pub fn set_home_altitude(
     port: &mut Box<dyn SerialPort>,
     alt1_m: Option<i32>,
@@ -322,12 +333,12 @@ pub fn set_home_altitude(
         let settings = &mut eeprom[272..272 + 32];
 
         if let Some(m) = alt1_m {
-            let raw = (m * 10 + 10000) as u16;
+            let raw = encode_altitude(m);
             settings[7] = (raw & 0xFF) as u8;
             settings[8] = (raw >> 8) as u8;
         }
         if let Some(m) = alt2_m {
-            let raw = (m * 10 + 10000) as u16;
+            let raw = encode_altitude(m);
             settings[9] = (raw & 0xFF) as u8;
             settings[10] = (raw >> 8) as u8;
         }
@@ -871,6 +882,17 @@ mod tests {
         assert_eq!(settings[7], 0x98);
         assert_eq!(settings[8], 0x3A);
         assert_eq!(&sent[80..84], &[0x10, 0x02, 0x01, 0x14]);
+    }
+
+    #[test]
+    fn encode_altitude_saturates_out_of_range() {
+        // In range: round-trips exactly.
+        assert_eq!(encode_altitude(0), 10000);
+        assert_eq!(encode_altitude(-1000), 0);
+        assert_eq!(encode_altitude(5553), 65530);
+        // Out of range: clamps instead of wrapping to an unrelated value.
+        assert_eq!(encode_altitude(i32::MAX), u16::MAX);
+        assert_eq!(encode_altitude(i32::MIN), 0);
     }
 
     #[test]
