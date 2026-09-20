@@ -154,7 +154,8 @@ sigma-pure-gps-cli set-waypoint --name "Summit" --label "Zurich" --lat 47.3769 -
 
 ### Set home altitude
 
-Writes one or both home altitude slots to the device (in metres). At least one flag is required.
+Writes one or both home altitude slots to the device (in metres). At least one flag is
+required. Valid range is -1000 to 5553 metres (the on-device field is a 16-bit encoded value).
 
 ```bash
 sigma-pure-gps-cli set-home-altitude --alt1 442

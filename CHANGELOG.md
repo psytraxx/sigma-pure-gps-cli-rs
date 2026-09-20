@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- `set-home-altitude` now rejects `--alt1`/`--alt2` values outside -1000..=5553 metres
+  instead of silently encoding them. The on-device field is a 16-bit
+  `altitude_m * 10 + 10000` value; an out-of-range input previously wrapped (release builds)
+  or panicked (debug builds) instead of being rejected, and a wrapped value would be written
+  to the device as a valid-looking but wrong altitude. `protocol::set_home_altitude` also
+  now uses saturating arithmetic as a defense-in-depth backstop instead of an unchecked cast.
+
 ### Security
 - `protocol::load_eeprom` now verifies the seed-0 checksum on the 1030-byte EEPROM read
   response before returning it, instead of trusting the payload unconditionally. Every
