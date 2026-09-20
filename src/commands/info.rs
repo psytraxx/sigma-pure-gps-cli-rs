@@ -18,11 +18,9 @@ pub async fn run(port_arg: Option<String>) -> Result<()> {
     .await
 }
 
+// `load_unit_info` has already verified the length, checksum and model byte, so the
+// slices below cannot panic and the firmware byte is known to come from a real Pure GPS.
 fn print_unit_info(raw: &[u8]) {
-    if raw.len() < 76 {
-        println!("Unit info response too short ({} bytes)", raw.len());
-        return;
-    }
     let serial_bytes = &raw[5..11];
     let firmware_bytes = &raw[69..75];
     let serial: u64 = serial_bytes

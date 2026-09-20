@@ -84,10 +84,52 @@ pub fn open_port(port_name: &str) -> Result<Box<dyn SerialPort>> {
         .with_context(|| format!("Failed to open {port_name}"))
 }
 
-/// Returns the raw 76-byte unit info response.
+/// Model identifier byte for the Pure GPS (GPS10), at payload offset 64.
+///
+/// `Gps10Decoder.decodeInitialInformation` switches on `param2[0] - 33` and rejects the
+/// device as "Model not supported" for anything but 0, so 33 (0x21) is the only accepted
+/// model. `param2` is the payload slice starting at 64, and the payload starts after the
+/// 5-byte response header — hence offset 69 in the raw response.
+const UNIT_INFO_MODEL_GPS10: u8 = 0x21;
+const UNIT_INFO_MODEL_OFFSET: usize = 69;
+
+/// Sends the unit-info command and returns the raw 76-byte response, after verifying that
+/// the response is well-formed and came from a Pure GPS.
+///
+/// Every command that mutates device state runs this first, so it is the single gate that
+/// stops a write from landing on an unrelated serial device (notably when `--port` is given
+/// explicitly, which bypasses USB VID auto-detection entirely).
+///
+/// Mirrors `Gps10DSHandler.decodeUnitInformation`: validate the seed-0 checksum over the
+/// whole response, then require the model byte to identify a GPS10.
 pub fn load_unit_info(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
     send(port, CMD_LOAD_UNIT_INFO)?;
-    recv(port, 76)
+    let raw = recv(port, 76)?;
+    verify_unit_info(&raw)?;
+    Ok(raw)
+}
+
+/// Checks that a unit-info response is a valid GPS10 identification.
+fn verify_unit_info(raw: &[u8]) -> Result<()> {
+    if raw.len() != 76 {
+        bail!(
+            "Unit info response has wrong length ({} bytes, expected 76) — \
+             the device on this port does not speak the SIGMA protocol",
+            raw.len()
+        );
+    }
+    verify_checksum_seed0(raw).context(
+        "Unit info response failed its checksum — the device on this port does not speak \
+         the SIGMA protocol",
+    )?;
+    let model = raw[UNIT_INFO_MODEL_OFFSET];
+    if model != UNIT_INFO_MODEL_GPS10 {
+        bail!(
+            "Unsupported device model (identifier {model:#04x}, expected \
+             {UNIT_INFO_MODEL_GPS10:#04x} for the Pure GPS) — refusing to continue"
+        );
+    }
+    Ok(())
 }
 
 /// Reads and discards the full EEPROM. The original app always does this before writing AGPS
@@ -561,15 +603,61 @@ mod tests {
 
     // ── Tests ─────────────────────────────────────────────────────────────────
 
+    /// Builds a well-formed 76-byte unit-info response for the given model byte,
+    /// with a valid seed-0 trailing checksum.
+    fn unit_info_response(model: u8) -> Vec<u8> {
+        let mut raw = vec![0u8; 76];
+        raw[5] = 0x42; // first serial byte
+        raw[UNIT_INFO_MODEL_OFFSET] = model;
+        let checksum = raw[..75].iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+        raw[75] = checksum;
+        raw
+    }
+
     #[test]
     fn load_unit_info_returns_raw_response() {
-        let mut raw = vec![0u8; 76];
-        raw[5] = 0x42;
+        let raw = unit_info_response(UNIT_INFO_MODEL_GPS10);
         let (mock, _written) = MockPort::new(&raw);
         let mut port = mock.into_box();
         let result = load_unit_info(&mut port).unwrap();
         assert_eq!(result.len(), 76);
         assert_eq!(result[5], 0x42);
+    }
+
+    #[test]
+    fn load_unit_info_rejects_bad_checksum() {
+        let mut raw = unit_info_response(UNIT_INFO_MODEL_GPS10);
+        raw[75] ^= 0xFF; // corrupt the checksum
+        let (mock, _written) = MockPort::new(&raw);
+        let mut port = mock.into_box();
+        assert!(load_unit_info(&mut port).is_err());
+    }
+
+    #[test]
+    fn load_unit_info_rejects_unsupported_model() {
+        // A device that speaks the protocol correctly but reports a different model.
+        let raw = unit_info_response(0x22);
+        let (mock, _written) = MockPort::new(&raw);
+        let mut port = mock.into_box();
+        let err = load_unit_info(&mut port).unwrap_err().to_string();
+        assert!(err.contains("Unsupported device model"), "got: {err}");
+    }
+
+    #[test]
+    fn verify_unit_info_accepts_valid_gps10() {
+        assert!(verify_unit_info(&unit_info_response(UNIT_INFO_MODEL_GPS10)).is_ok());
+    }
+
+    #[test]
+    fn verify_unit_info_rejects_wrong_length() {
+        assert!(verify_unit_info(&[0u8; 40]).is_err());
+    }
+
+    #[test]
+    fn verify_unit_info_rejects_all_zero_response() {
+        // A silent or unrelated device that happens to return 76 zero bytes passes the
+        // checksum (0 == 0) but must still be rejected on the model byte.
+        assert!(verify_unit_info(&[0u8; 76]).is_err());
     }
 
     #[test]

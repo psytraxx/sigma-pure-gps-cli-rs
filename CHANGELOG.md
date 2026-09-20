@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- `protocol::load_unit_info` now verifies the 76-byte unit-info response before any command
+  proceeds, instead of discarding it: it checks the response length, validates the seed-0
+  checksum, and requires the model identifier at byte 69 to be `0x21` (Pure GPS). This
+  mirrors `Gps10DSHandler.decodeUnitInformation` in the ActionScript source, which performed
+  all three checks. Because `load_unit_info` is the mandatory preamble for every command,
+  this closes the gap where `update`, `set-waypoint`, `set-home-altitude`, `set-sleep-screen`
+  and `delete-tracks` would write to whatever device answered on the port. Previously USB VID
+  auto-detection was the only guard, and an explicit `--port` bypassed even that. The model
+  check is what rejects a silent device returning 76 zero bytes, which passes the checksum
+  trivially.
+
+### Changed
+- `commands::info` drops its now-redundant response-length check, since `load_unit_info`
+  guarantees a verified 76-byte response
+
 ## [0.5.0]
 
 ### Added

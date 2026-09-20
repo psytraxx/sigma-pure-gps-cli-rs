@@ -183,6 +183,24 @@ Pass `-v` (or `--verbose`) before any subcommand to enable debug output:
 sigma-pure-gps-cli -v update
 ```
 
+### Device verification
+
+Every command identifies the device before doing anything else. The unit-info response is
+checked for the correct length, a valid checksum, and a model identifier matching the Pure
+GPS; anything else aborts with an error before a single byte is written.
+
+This matters for the commands that modify the device — `update`, `set-waypoint`,
+`set-home-altitude`, `set-sleep-screen` and `delete-tracks`. Without `--port` the tool also
+auto-detects by USB vendor ID, but passing `--port` explicitly skips that step, so the
+identity check is the only thing preventing a write to the wrong serial device:
+
+```bash
+# Aborts rather than writing, if /dev/ttyUSB0 is not a Pure GPS
+sigma-pure-gps-cli set-home-altitude --port /dev/ttyUSB0 --alt1 450
+```
+
+`delete-tracks` is irreversible and additionally prompts for confirmation.
+
 ## Device internals
 
 ### Suspected hardware
