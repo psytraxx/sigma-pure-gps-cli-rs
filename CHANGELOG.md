@@ -2,7 +2,14 @@
 
 ## Unreleased
 
-(nothing yet)
+### Security
+- `protocol::load_eeprom` now verifies the seed-0 checksum on the 1030-byte EEPROM read
+  response before returning it, instead of trusting the payload unconditionally. Every
+  write command (`set-waypoint`, `set-home-altitude`, `set-sleep-screen`, `delete-tracks`)
+  goes through a read-modify-write of the full 1024-byte EEPROM image, so a corrupted read
+  (serial glitch, partial transfer) was previously patched and written straight back to the
+  device as authoritative, turning a transient error into permanent corruption of every
+  settings block. A failed checksum now aborts the command instead.
 
 ## [0.6.0]
 

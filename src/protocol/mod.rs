@@ -147,6 +147,12 @@ fn verify_unit_info(raw: &[u8]) -> Result<()> {
 pub fn load_eeprom(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
     send(port, CMD_GET_COMPLETE_EEPROM)?;
     let raw = recv(port, 1030)?;
+    // Every write path is a read-modify-write of this whole image (see `modify_eeprom`),
+    // so an unverified corrupt read would be patched and written back to the device as
+    // authoritative — turning a transient serial glitch into permanent corruption of
+    // every settings block. Verify before trusting it.
+    verify_checksum_seed0(&raw)
+        .context("EEPROM read failed its checksum — refusing to use a possibly corrupt image")?;
     // Strip 5-byte header and trailing checksum; payload is 1024 bytes
     Ok(raw[5..5 + 1024].to_vec())
 }
@@ -581,7 +587,8 @@ mod tests {
     fn eeprom_response(eeprom: &[u8; 1024]) -> Vec<u8> {
         let mut v = vec![0u8; 5];
         v.extend_from_slice(eeprom);
-        v.push(0);
+        let checksum = v.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+        v.push(checksum);
         v
     }
 
@@ -692,6 +699,17 @@ mod tests {
         assert_eq!(result.len(), 1024);
         assert_eq!(result[0], 0xAB);
         assert_eq!(result[1023], 0xCD);
+    }
+
+    #[test]
+    fn load_eeprom_rejects_corrupt_checksum() {
+        let eeprom = [0u8; 1024];
+        let mut response = eeprom_response(&eeprom);
+        let last = response.len() - 1;
+        response[last] ^= 0xFF; // flip the checksum byte
+        let (mock, _written) = MockPort::new(&response);
+        let mut port = mock.into_box();
+        assert!(load_eeprom(&mut port).is_err());
     }
 
     #[test]
