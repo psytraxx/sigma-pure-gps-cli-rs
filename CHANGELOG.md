@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.6.0]
 
 ### Security
 - `protocol::load_unit_info` now verifies the 76-byte unit-info response before any command
