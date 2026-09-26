@@ -8,6 +8,10 @@
   the matching prefix and number of differing bytes. Useful to check whether an interrupted
   `update` actually wrote the data.
 
+### Fixed
+- Raised the serial read timeout from 5s to 20s to match the reference client's idle
+  timeout, giving slow device replies (e.g. during AGPS upload) more margin.
+
 ## [0.6.1]
 
 ### Fixed
