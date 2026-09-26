@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-(nothing yet)
+### Added
+- `verify-agps [FILE]` subcommand: reads the AGPS data back from device flash (0x1000) and
+  compares it byte-for-byte with a reference file (or freshly downloaded data), reporting
+  the matching prefix and number of differing bytes. Useful to check whether an interrupted
+  `update` actually wrote the data.
 
 ## [0.6.1]
 
