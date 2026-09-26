@@ -8,6 +8,13 @@
   the matching prefix and number of differing bytes. Useful to check whether an interrupted
   `update` actually wrote the data.
 
+### Changed
+- Clarified the error shown when `update`/`upload_agps` times out waiting for the device's
+  reply after closing the upload stream: by that point the data has already been committed
+  to flash, so the upload likely succeeded even though the command reports an error. The
+  reference client has no device-side recovery command for this case either — a wedged
+  device requires a USB replug regardless of client behavior.
+
 ### Fixed
 - Raised the serial read timeout from 5s to 20s to match the reference client's idle
   timeout, giving slow device replies (e.g. during AGPS upload) more margin.
