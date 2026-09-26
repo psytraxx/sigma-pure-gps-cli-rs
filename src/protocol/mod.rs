@@ -73,7 +73,8 @@ fn build_flash_read_cmd(start: u32, len: u32) -> Vec<u8> {
 }
 
 const CHUNK_SIZE: usize = 64;
-const READ_TIMEOUT: Duration = Duration::from_secs(5);
+// Matches the reference client's 20s `_receivedDataUncompleteInterval` (DeviceCommunicationHandler.as).
+const READ_TIMEOUT: Duration = Duration::from_secs(20);
 const BAUD_RATE: u32 = 115_200;
 const CHUNK_DELAY: Duration = Duration::from_millis(50);
 
