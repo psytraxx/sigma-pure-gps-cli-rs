@@ -259,9 +259,18 @@ pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
         std::thread::sleep(CHUNK_DELAY);
     }
 
-    // Close stream
+    // Close stream. By this point all data has already been streamed to the device, which
+    // commits it to flash before replying here — so a timeout on this read means the write
+    // itself most likely succeeded (confirmed via `verify-agps` in the field) even though
+    // this call reports an error. The reference AS client has no recovery command for this:
+    // on timeout it just tears down its own USB handle and relies on the user reconnecting,
+    // so there is nothing more this function can do to leave the device in a clean state.
     send(port, CMD_SEND_END)?;
-    let reply = recv(port, 9)?;
+    let reply = recv(port, 9).context(
+        "No reply after sending the closing command — the device may still have written \
+         the data successfully; run `verify-agps` to check. If the device is now unresponsive, \
+         unplug and reconnect it.",
+    )?;
     debug!("CMD_SEND_END reply: {:02X?}", reply);
     std::thread::sleep(CHUNK_DELAY);
 
