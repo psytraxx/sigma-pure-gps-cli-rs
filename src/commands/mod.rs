@@ -13,3 +13,4 @@ pub mod set_home_altitude;
 pub mod set_sleep_screen;
 pub mod set_waypoint;
 pub mod update;
+pub mod verify_agps;

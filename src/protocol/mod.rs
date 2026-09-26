@@ -221,11 +221,19 @@ pub fn set_sleep_screen(port: &mut Box<dyn SerialPort>, payload: &[u8; 172]) -> 
 /// Reads 15 bytes from flash at AGPS_DATA_START (0x1000 = 4096).
 /// Command sends len-1=14; response is 15+6 bytes. Date is at payload offsets [10..12].
 pub fn get_agps_flash_header(port: &mut Box<dyn SerialPort>) -> Result<Vec<u8>> {
-    let cmd = build_flash_read_cmd(0x1000, 14);
+    read_agps_flash(port, 15)
+}
+
+/// Reads `len` bytes of the AGPS area from flash, starting at AGPS_DATA_START (0x1000).
+pub fn read_agps_flash(port: &mut Box<dyn SerialPort>, len: usize) -> Result<Vec<u8>> {
+    if len == 0 || len > 32760 {
+        bail!("AGPS flash read length must be 1..=32760, got {len}");
+    }
+    let cmd = build_flash_read_cmd(0x1000, len as u32 - 1);
     send(port, &cmd)?;
-    let raw = recv(port, 5 + 15 + 1)?;
+    let raw = recv(port, 5 + len + 1)?;
     verify_checksum_seed0(&raw)?;
-    Ok(raw[5..5 + 15].to_vec())
+    Ok(raw[5..5 + len].to_vec())
 }
 
 pub fn upload_agps(port: &mut Box<dyn SerialPort>, data: &[u8]) -> Result<()> {
@@ -815,6 +823,35 @@ mod tests {
         let (mock, _written) = MockPort::new(&frame);
         let mut port = mock.into_box();
         assert!(get_agps_flash_header(&mut port).is_err());
+    }
+
+    #[test]
+    fn read_agps_flash_sends_len_minus_one_and_strips_framing() {
+        let mut data = vec![0u8; 5];
+        data.extend((0..100u8).collect::<Vec<_>>());
+        let frame = with_seed0_checksum(&data);
+        let (mock, written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        let result = read_agps_flash(&mut port, 100).unwrap();
+        assert_eq!(result, (0..100u8).collect::<Vec<_>>());
+        assert_eq!(*written.lock().unwrap(), build_flash_read_cmd(0x1000, 99));
+    }
+
+    #[test]
+    fn read_agps_flash_bad_checksum_fails() {
+        let mut frame = with_seed0_checksum(&[0u8; 5 + 100]);
+        *frame.last_mut().unwrap() ^= 0xFF;
+        let (mock, _written) = MockPort::new(&frame);
+        let mut port = mock.into_box();
+        assert!(read_agps_flash(&mut port, 100).is_err());
+    }
+
+    #[test]
+    fn read_agps_flash_rejects_bad_length() {
+        let (mock, _written) = MockPort::new(&[]);
+        let mut port = mock.into_box();
+        assert!(read_agps_flash(&mut port, 0).is_err());
+        assert!(read_agps_flash(&mut port, 32761).is_err());
     }
 
     #[test]

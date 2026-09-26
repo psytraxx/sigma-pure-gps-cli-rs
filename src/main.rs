@@ -56,6 +56,11 @@ enum Command {
     },
     /// Show the date of the AGPS data currently on the device
     AgpsDate,
+    /// Read back the AGPS data from the device and compare it byte-for-byte with a reference
+    VerifyAgps {
+        /// Reference AGPS file (from download-agps). Downloads fresh data if omitted.
+        file: Option<String>,
+    },
     /// Download recorded tracks from the device, correct elevation via Sigma elevation service
     DownloadTracks {
         /// Directory to write GPX files into
@@ -127,6 +132,7 @@ async fn main() -> Result<()> {
             commands::set_sleep_screen::run(cli.port, &input).await
         }
         Command::AgpsDate => commands::agps_date::run(cli.port).await,
+        Command::VerifyAgps { file } => commands::verify_agps::run(cli.port, file).await,
         Command::DownloadTracks { output_dir } => {
             commands::download_tracks::run(cli.port, &output_dir).await
         }

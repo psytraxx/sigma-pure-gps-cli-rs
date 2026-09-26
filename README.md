@@ -12,6 +12,7 @@ A command-line tool for managing the **Sigma Sport Pure GPS** (GPS10) GPS bicycl
 - Read device settings (timezone, language, units, contrast, …)
 - Read cumulative totals (distance, time, calories, climb)
 - Show the AGPS data date currently stored on the device
+- Verify the AGPS data on the device byte-for-byte against a reference file
 - Set home altitude 1 and 2 on the device
 - Delete all activity data from the device
 - Auto-detect the device by USB VID — no manual port selection needed
@@ -70,6 +71,7 @@ Commands:
   get-sleep-screen    Read the sleep screen / watch face bitmap from the device and save as PNG
   set-sleep-screen    Upload a PNG bitmap as the device sleep screen / watch face
   agps-date           Show the AGPS data date currently stored on the device
+  verify-agps         Compare the AGPS data on the device with a reference file
   set-home-altitude   Set home altitude 1 and/or 2 on the device (in metres)
   delete-tracks       Permanently erase all activity data from the device
   get-waypoint        Read the point navigation waypoint stored on the device
@@ -103,6 +105,15 @@ Each track is saved as `track_NNN_YYYYMMDD_HHMMSS.gpx` with a `<desc>` summary (
 
 ```bash
 sigma-pure-gps-cli download-agps agps.bin
+```
+
+### Verify AGPS data on the device
+
+Reads the AGPS data back from device flash and compares it byte-for-byte with a reference file, reporting how many leading bytes match. Useful after an interrupted `update`. Without a file it downloads fresh data, which only matches if u-blox hasn't published newer data since the upload.
+
+```bash
+sigma-pure-gps-cli verify-agps agps.bin
+sigma-pure-gps-cli verify-agps
 ```
 
 ### Query device info
