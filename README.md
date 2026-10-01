@@ -2,7 +2,9 @@
 
 A command-line tool for managing the **Sigma Sport Pure GPS** (GPS10) GPS bicycle computer via USB. Update AGPS satellite prediction data and download recorded tracks as GPX files.
 
-> **Why this exists:** The official [Sigma DATA CENTER](https://sigma.bike/product/data-center/) desktop application — the only supported way to manage this device — was **Windows-only** and had its **support discontinued on 1 December 2024**. It never ran on Linux or macOS. This tool fills that gap with a cross-platform CLI that covers the essential workflows.
+> **Why this exists:** The official [Sigma DATA CENTER](https://sigma.bike/product/data-center/) desktop application — the only supported way to manage this device — was **Windows-only** and had its **support discontinued on 1 December 2024**. **FirmwareUpdateHandler > The download of the A-GPS update file failed. Error #2032** It never ran on Linux or macOS. This tool fills that gap with a cross-platform CLI that covers the essential workflows. 
+
+
 
 ## Features
 
